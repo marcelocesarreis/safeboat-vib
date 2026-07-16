@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAFEBOAT VIB — Sensor de Vibração Autônomo para Manutenção Preditiva</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600&family=Montserrat:wght@600;700;800&family=Source+Sans+3:wght@400;600;700&display=swap');
+  :root {
+    --navy: #23304A;        /* Pantone 654 C — cor institucional */
+    --navy-soft: rgba(35,48,74,.55);
+    --ink: #231F20;
+    --bg: #ffffff;
+    --panel: #ffffff;
+    --panel2: #f3f5f9;
+    --line: #dde2ea;
+    --rule: rgba(35,48,74,.30);
+    --txt: #23304A;
+    --txt2: #6b7385;
+    --acc: #2563eb;         /* acento espectral (vibração) */
+    --crit: #b91c1c; --ok: #15803d; --warn: #a16207;
+    --serif-h: 'Josefin Sans', 'Segoe UI', sans-serif;
+    --sans: 'Source Sans 3', -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { background: var(--bg); color: var(--txt); font-family: var(--sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+
+  header {
+    position: fixed; inset: 0 0 auto 0; z-index: 50; height: 60px;
+    display: flex; align-items: center; justify-content: space-between; padding: 0 28px;
+    background: var(--navy); border-bottom: 1px solid rgba(255,255,255,.08);
+    font-size: 13px;
+  }
+  .brand { display: flex; align-items: center; gap: 14px; color: #fff; text-decoration: none; }
+  .brand img { height: 32px; width: auto; display: block; }
+  .brand .divi { width: 1px; height: 26px; background: rgba(255,255,255,.35); }
+  .brand .prod { font-family: var(--serif-h); font-weight: 300; font-size: 17px; letter-spacing: .32em; color: #fff; padding-top: 3px; }
+  header nav a { color: rgba(255,255,255,.72); text-decoration: none; margin-left: 20px; transition: color .2s; letter-spacing: .04em; }
+  header nav a:hover { color: #fff; }
+  @media (max-width: 960px) { header nav a:nth-child(n+4) { display: none; } .brand .prod { letter-spacing: .18em; } }
+
+  .hero { padding: 130px 24px 4px; text-align: center; }
+  .hero .eyebrow { color: var(--navy); font-weight: 600; font-size: 12.5px; letter-spacing: .34em; }
+  .hero h1 { font-family: var(--serif-h); font-weight: 300; text-transform: uppercase;
+             font-size: clamp(46px, 8vw, 96px); letter-spacing: .14em; line-height: 1.05;
+             margin: 18px 0 10px; color: var(--navy); text-indent: .14em; }
+  .hero p.tag { font-size: clamp(17px, 2.4vw, 24px); color: var(--txt2); font-weight: 400; }
+  .hero p.tag b { color: var(--navy); font-weight: 600; }
+  .hero .waves { margin: 22px auto 0; display: block; width: 76px; height: auto; opacity: .9; }
+
+  /* ---------- viewer ---------- */
+  .stage-wrap { position: relative; height: min(78vh, 860px); margin: 10px auto 0; max-width: 1400px; }
+  #stage { position: absolute; inset: 0; cursor: grab; }
+  #stage:active { cursor: grabbing; }
+  .hint { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); font-size: 12px; color: var(--txt2);
+          background: rgba(255,255,255,.75); border: 1px solid var(--line); padding: 6px 14px; border-radius: 999px;
+          backdrop-filter: blur(8px); pointer-events: none; transition: opacity 1s; }
+  #tooltip { position: absolute; pointer-events: none; background: var(--navy); border: 1px solid var(--navy);
+             color: #fff; font-size: 12.5px; padding: 6px 11px; border-radius: 8px; transform: translate(-50%, -140%);
+             opacity: 0; transition: opacity .15s; white-space: nowrap; }
+  .ctrls {
+    position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 22px; flex-wrap: wrap; justify-content: center;
+    background: rgba(255,255,255,.85); border: 1px solid var(--line); border-radius: 14px;
+    padding: 13px 22px; backdrop-filter: blur(20px); box-shadow: 0 14px 44px rgba(35,48,74,.16);
+  }
+  .ctrls label.head { font-size: 10.5px; color: var(--txt2); letter-spacing: .22em; display: block; margin-bottom: 6px; font-weight: 600; }
+  .ctrls input[type=range] { width: 190px; accent-color: var(--navy); }
+  .chips { display: flex; gap: 8px; }
+  .chip { width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; outline: 2px solid var(--line); outline-offset: 2px; }
+  .chip.on { outline-color: var(--navy); }
+  .chip.branco { background: #eceae5; }
+  .chip.grafite { background: #3a3d42; }
+  .btn { background: transparent; color: var(--navy); border: 1px solid var(--rule); border-radius: 999px;
+         font-size: 12.5px; padding: 7px 15px; cursor: pointer; transition: .2s; font-family: var(--sans); font-weight: 600; }
+  .btn:hover { border-color: var(--navy); }
+  .btn.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+
+  /* ---------- sections ---------- */
+  section { max-width: 1080px; margin: 0 auto; padding: 96px 24px 0; }
+  .kick { display: flex; align-items: center; gap: 16px; font-size: 11.5px; font-weight: 700;
+          letter-spacing: .3em; color: var(--navy); margin-bottom: 20px; }
+  .kick::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+  section h2 { font-family: var(--serif-h); font-weight: 300; text-transform: uppercase; letter-spacing: .06em;
+               font-size: clamp(26px, 3.8vw, 38px); line-height: 1.22; margin-bottom: 10px; color: var(--navy); }
+  section p.sub { color: var(--txt2); font-size: 16.5px; max-width: 720px; margin-bottom: 32px; line-height: 1.55; }
+  section p.sub b { color: var(--navy); }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 24px 22px; }
+  .card .big { font-family: var(--serif-h); font-weight: 400; font-size: 27px; letter-spacing: .02em; color: var(--navy); }
+  .card .big small { font-size: 15px; color: var(--txt2); font-weight: 300; }
+  .card .lbl { color: var(--txt2); font-size: 13.5px; margin-top: 6px; line-height: 1.5; }
+  .card .lbl b { color: var(--navy); font-weight: 600; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--navy-soft); font-weight: 700; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
+  td:first-child { font-weight: 600; white-space: nowrap; color: var(--navy); }
+  td { color: #444b5c; }
+  td em { font-style: normal; color: var(--navy); font-weight: 600; }
+  .tableCard { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: auto; }
+  .tableCard tr:last-child td { border-bottom: none; }
+
+  .dl { display: flex; flex-wrap: wrap; gap: 12px; }
+  .dl a { display: flex; flex-direction: column; gap: 3px; text-decoration: none; color: var(--navy);
+          background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 22px; min-width: 200px; transition: .2s; }
+  .dl a:hover { border-color: var(--navy); transform: translateY(-2px); box-shadow: 0 10px 26px rgba(35,48,74,.12); }
+  .dl a .n { font-weight: 700; font-size: 15px; }
+  .dl a .d { color: var(--txt2); font-size: 12.5px; }
+  .dl a .n::before { content: "⬇︎ "; color: var(--navy); }
+
+  ol.steps { counter-reset: s; list-style: none; display: grid; gap: 10px; }
+  ol.steps li { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 15px 18px 15px 58px; position: relative; font-size: 14.5px; color: #444b5c; line-height: 1.55; }
+  ol.steps li b { color: var(--navy); }
+  ol.steps li::before { counter-increment: s; content: counter(s); position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
+    width: 27px; height: 27px; border-radius: 50%; background: var(--navy); color: #fff;
+    font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+
+  /* ---------- pipeline ---------- */
+  .pipe { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+  .pipe .stg { flex: 1 1 130px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 13px; position: relative; }
+  .pipe .stg .t { font-weight: 700; font-size: 13.5px; margin-bottom: 4px; color: var(--navy); }
+  .pipe .stg .d { font-size: 12px; color: var(--txt2); line-height: 1.45; }
+  .pipe .stg .d b { color: var(--navy); }
+  .pipe .stg::after { content: "→"; position: absolute; right: -10px; top: 50%; transform: translateY(-50%); color: var(--navy); font-weight: 700; z-index: 2; }
+  .pipe .stg:last-child::after { content: none; }
+
+  /* ---------- demo ---------- */
+  .demo { background: var(--panel2); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
+  .demo-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+  .status { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff; }
+  .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--txt2); }
+  .status.ok .dot { background: var(--ok); }
+  .status.warn { border-color: rgba(161,98,7,.5); color: var(--warn); }
+  .status.warn .dot { background: var(--warn); animation: pulse 1s infinite; }
+  .status.alert { border-color: rgba(185,28,28,.45); color: var(--crit); }
+  .status.alert .dot { background: var(--crit); animation: pulse .7s infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .demoCtl { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
+  .demoCtl .fld label { display: block; font-size: 10.5px; color: var(--txt2); letter-spacing: .2em; font-weight: 700; margin-bottom: 6px; }
+  .demoCtl input[type=range] { width: 170px; accent-color: var(--navy); }
+  .demoCtl .val { font-size: 12px; color: var(--navy); font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .views { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; }
+  .view .cap { font-size: 11px; color: var(--navy-soft); letter-spacing: .18em; text-transform: uppercase; font-weight: 700; margin-bottom: 8px; }
+  .view canvas { width: 100%; aspect-ratio: 16/7; border-radius: 10px; border: 1px solid var(--navy); background: #000; display: block; }
+  .gaugeRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-top: 16px; }
+  .gauge { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 15px 18px; }
+  .gauge .g-lbl { font-size: 10.5px; color: var(--txt2); letter-spacing: .18em; font-weight: 700; }
+  .gauge .g-val { font-family: var(--serif-h); font-size: 30px; color: var(--navy); font-variant-numeric: tabular-nums; margin-top: 3px; }
+  .gauge .g-val small { font-size: 14px; color: var(--txt2); }
+  .gauge .zone { display: inline-block; margin-top: 4px; font-size: 11.5px; font-weight: 700; letter-spacing: .12em; padding: 3px 11px; border-radius: 999px; color: #fff; background: var(--ok); }
+  .demo-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0 0; align-items: center; }
+  .demo-actions .lbl { font-size: 11px; color: var(--navy-soft); letter-spacing: .18em; margin-right: 4px; font-weight: 700; }
+  .abtn { padding: 8px 15px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: var(--txt); font-size: 12.5px; cursor: pointer; transition: .15s; font-family: var(--sans); }
+  .abtn:hover { border-color: var(--acc); color: var(--acc); }
+  .abtn.on { background: var(--acc); border-color: var(--acc); color: #fff; font-weight: 600; }
+  .abtn.ok:hover { border-color: var(--ok); color: var(--ok); }
+  .alerts { margin-top: 18px; display: grid; gap: 8px; }
+  .alerts .empty { color: var(--txt2); font-size: 13px; padding: 10px 4px; }
+  .al { display: grid; grid-template-columns: auto 1fr; gap: 12px; background: #fff; border: 1px solid var(--line);
+        border-left: 3px solid var(--warn); border-radius: 10px; padding: 11px 14px; font-size: 13px; }
+  .al.critico { border-left-color: var(--crit); }
+  .al .when { color: var(--txt2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .al .what { color: #444b5c; }
+  .al .what b { color: var(--navy); }
+  .al .what .diag { color: var(--txt2); margin-top: 3px; font-size: 12.5px; }
+  .al .what .diag::before { content: "IA · "; color: var(--navy); font-weight: 700; }
+
+  .schWrap { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; overflow-x: auto; }
+  .schWrap svg { min-width: 820px; width: 100%; height: auto; display: block; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px; font-size: 12.5px; color: var(--txt2); padding: 0 6px; }
+  .legend i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+
+  .note { background: var(--panel2); border: 1px solid var(--line); border-left: 3px solid var(--navy); border-radius: 10px; padding: 14px 18px; font-size: 13.5px; color: #444b5c; line-height: 1.6; margin-top: 16px; }
+  .note b { color: var(--navy); }
+  .note.warn { border-left-color: var(--warn); }
+  .note.warn b { color: var(--warn); }
+  .note code, section code { background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: .9em; color: var(--navy); }
+
+  pre.api { background: #0d1424; color: #d7e0f2; border-radius: 10px; padding: 18px 20px; font-size: 13px; line-height: 1.6;
+            overflow-x: auto; font-family: 'Cascadia Code', Consolas, monospace; }
+  pre.api .c { color: #7d8bab; } pre.api .k { color: #7dd3fc; } pre.api .s { color: #86efac; } pre.api .n { color: #fbbf24; }
+  .apiGrid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-items: start; }
+
+  /* ---------- kit comercial ---------- */
+  .kitGrid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+  .kitCard { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 26px 24px; position: relative; }
+  .kitCard.hl { border-color: var(--navy); box-shadow: 0 14px 44px rgba(35,48,74,.14); }
+  .kitCard .flag { position: absolute; top: -11px; left: 22px; background: var(--navy); color: #fff; font-size: 10.5px; font-weight: 700; letter-spacing: .18em; padding: 4px 12px; border-radius: 999px; }
+  .kitCard h3 { font-family: var(--serif-h); font-weight: 400; letter-spacing: .1em; font-size: 19px; color: var(--navy); text-transform: uppercase; }
+  .kitCard .who { color: var(--txt2); font-size: 12.5px; margin: 4px 0 14px; }
+  .kitCard ul { list-style: none; display: grid; gap: 7px; font-size: 13.5px; color: #444b5c; }
+  .kitCard ul li::before { content: "— "; color: var(--navy); font-weight: 700; }
+  .kitCard ul li b { color: var(--navy); }
+
+  footer { margin-top: 100px; background: var(--navy); color: rgba(255,255,255,.75); text-align: center; padding: 54px 20px 46px; font-size: 12.5px; }
+  footer img { height: 44px; width: auto; display: block; margin: 0 auto 16px; }
+  footer .tagline { font-size: 11px; letter-spacing: .34em; color: rgba(255,255,255,.65); margin-bottom: 18px; }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="brand" href="#">
+    <img src="img/logo-safeboat-branco.png" alt="SAFEBOAT">
+    <span class="divi"></span>
+    <span class="prod">VIB</span>
+  </a>
+  <nav>
+    <a href="#demo">Demo</a>
+    <a href="#metodo">Método</a>
+    <a href="#specs">Especificações</a>
+    <a href="#energia">Energia</a>
+    <a href="#eletrica">Elétrica</a>
+    <a href="#api">API</a>
+    <a href="#fixacao">Fixação</a>
+    <a href="#fabricacao">Fabricação</a>
+    <a href="#kit">Kit</a>
+    <a href="#downloads">Downloads</a>
+  </nav>
+</header>
+
+<div class="hero">
+  <div class="eyebrow">MANUTENÇÃO PREDITIVA &nbsp;·&nbsp; VIBRAÇÃO &nbsp;·&nbsp; IA</div>
+  <h1>VIB</h1>
+  <p class="tag">Sente o desbalanceamento <b>meses antes</b> da quebra. Mesmo com o mar mexendo.</p>
+  <svg class="waves" viewBox="0 0 76 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <g stroke="#23304A" stroke-width="2.6" stroke-linecap="round">
+      <path d="M6 6 q 8 -6 16 0 t 16 0 t 16 0 t 16 0"/>
+      <path d="M6 15 q 8 -6 16 0 t 16 0 t 16 0 t 16 0"/>
+      <path d="M6 24 q 8 -6 16 0 t 16 0 t 16 0 t 16 0"/>
+    </g>
+  </svg>
+</div>
+
+<div class="stage-wrap">
+  <div id="stage"></div>
+  <div class="hint" id="hint">Arraste para girar · Ctrl+scroll para zoom · Use o slider para explodir</div>
+  <div id="tooltip"></div>
+  <div class="ctrls">
+    <div>
+      <label class="head">VISTA EXPLODIDA</label>
+      <input type="range" id="explode" min="0" max="100" value="0">
+    </div>
+    <div>
+      <label class="head">ACABAMENTO</label>
+      <div class="chips">
+        <div class="chip branco on" data-c="branco" title="Branco Náutico"></div>
+        <div class="chip grafite" data-c="grafite" title="Grafite"></div>
+      </div>
+    </div>
+    <button class="btn on" id="rot">Rotação automática</button>
+    <button class="btn" id="reset">Recentrar</button>
+  </div>
+</div>
+
+<!-- ============================================================ demo -->
+<section id="demo">
+  <div class="kick">CANCELAMENTO DE MAR · AO VIVO</div>
+  <h2>O mar balança.<br>A análise, não.</h2>
+  <p class="sub">Embarcação é ambiente dinâmico: onda, marcha e manobra entram no acelerômetro junto com a vibração do motor. O VIB resolve isso com um <b>sensor de referência no casco</b>: o balanço é comum aos dois pontos, a vibração do motor não. O hub estima o acoplamento e subtrai — sobra só a assinatura mecânica. <b>Suba o mar</b> e veja o sinal bruto embarcar; a análise compensada nem se mexe. Depois <b>injete uma falha</b> e veja a IA encontrá-la.</p>
+
+  <div class="demo">
+    <div class="demo-top">
+      <div class="demoCtl">
+        <div class="fld">
+          <label>ESTADO DO MAR</label>
+          <input type="range" id="sea" min="0" max="100" value="35">
+          <div class="val" id="seaVal">Mar moderado</div>
+        </div>
+        <div class="fld">
+          <label>ROTAÇÃO DO MOTOR</label>
+          <input type="range" id="rpm" min="800" max="2400" step="50" value="1800">
+          <div class="val" id="rpmVal">1800 rpm · 1× = 30 Hz</div>
+        </div>
+        <div class="fld">
+          <label>COMPENSAÇÃO DE MAR</label>
+          <button class="abtn on" id="comp">ATIVA — referência do casco</button>
+        </div>
+      </div>
+      <div class="status ok" id="status"><span class="dot"></span><span id="statusTxt">Monitorando</span></div>
+    </div>
+    <div class="views">
+      <div class="view"><div class="cap">Aceleração bruta · motor + mar</div><canvas id="cvRaw" width="520" height="228"></canvas></div>
+      <div class="view"><div class="cap">Sinal compensado · só o motor</div><canvas id="cvComp" width="520" height="228"></canvas></div>
+      <div class="view"><div class="cap">Espectro FFT · 0–400 Hz</div><canvas id="cvSpec" width="520" height="228"></canvas></div>
+      <div class="view"><div class="cap">Tendência · preditivo</div><canvas id="cvTrend" width="520" height="228"></canvas></div>
+    </div>
+    <div class="gaugeRow">
+      <div class="gauge"><div class="g-lbl">SEVERIDADE ISO 10816</div><div class="g-val" id="gRms">— <small>mm/s RMS</small></div><span class="zone" id="gZone">ZONA A</span></div>
+      <div class="gauge"><div class="g-lbl">FATOR DE CRISTA</div><div class="g-val" id="gCrest">—</div></div>
+      <div class="gauge"><div class="g-lbl">CURTOSE</div><div class="g-val" id="gKurt">—</div></div>
+      <div class="gauge"><div class="g-lbl">ACOPLAMENTO MAR (k̂)</div><div class="g-val" id="gK">—</div></div>
+    </div>
+    <div class="demo-actions" id="anomBtns">
+      <span class="lbl">INJETAR FALHA:</span>
+      <button class="abtn" data-f="desbalanceamento">Desbalanceamento</button>
+      <button class="abtn" data-f="desalinhamento">Desalinhamento</button>
+      <button class="abtn" data-f="rolamento">Rolamento</button>
+      <button class="abtn" data-f="folga">Folga estrutural</button>
+      <button class="abtn ok" id="normal">✓ Normalizar</button>
+    </div>
+    <div class="alerts" id="alerts"><div class="empty">Nenhum alerta — vibração dentro do padrão do motor.</div></div>
+  </div>
+
+  <div class="note">O código desta página (<code>engine.js</code>) é a implementação de referência do pipeline: no barco, o simulador dá lugar aos blocos reais do LIS3DH, e a comparação motor×referência roda no hub SAFEBOAT. A projeção pontilhada na tendência é o <b>preditivo</b>: dias até a zona C na taxa de degradação atual.</div>
+</section>
+
+<!-- ============================================================ método -->
+<section id="metodo">
+  <div class="kick">MÉTODO</div>
+  <h2>Comparar sensores,<br>anular a dinâmica.</h2>
+  <p class="sub">O balanço do mar vive abaixo de ~3 Hz e é <b>comum a todo o casco</b>; a assinatura mecânica do motor vive de 10 a 1600 Hz e só existe no motor. O VIB explora as duas propriedades ao mesmo tempo — subtração coerente na banda do mar, análise espectral na banda da máquina.</p>
+  <div class="pipe">
+    <div class="stg"><div class="t">1 · Aquisição</div><div class="d">Rajada de 2048 amostras a <b>3,2 kHz</b> (LIS3DH, FIFO) em cada eixo, a cada 10 min</div></div>
+    <div class="stg"><div class="t">2 · Referência</div><div class="d">Sensor gêmeo no <b>casco</b> (longe do motor) captura só a dinâmica do mar</div></div>
+    <div class="stg"><div class="t">3 · Cancelamento</div><div class="d">k̂ estimado por projeção na banda &lt;5 Hz; <b>comp = motor − k̂·ref</b></div></div>
+    <div class="stg"><div class="t">4 · FFT</div><div class="d">2048 pontos, janela Hann, no próprio ESP32-C3 (~40 ms)</div></div>
+    <div class="stg"><div class="t">5 · Features</div><div class="d">RMS de velocidade 10–1000 Hz, crista, curtose, amplitude 1×/2×/harmônicos</div></div>
+    <div class="stg"><div class="t">6 · Regime</div><div class="d">RPM estimado pelo pico 1× — baseline separado por marcha lenta / cruzeiro</div></div>
+    <div class="stg"><div class="t">7 · Diagnóstico</div><div class="d">1×=desbalanceamento · 2×=desalinhamento · HF+curtose=rolamento · harmônicos=folga</div></div>
+    <div class="stg"><div class="t">8 · Preditivo</div><div class="d">Tendência do RMS por regime → <b>dias até a zona C</b> no app SAFEBOAT</div></div>
+  </div>
+  <div class="note">Por que não só um filtro passa-alta? Porque manobra, batida de proa e ressonâncias do casco <b>vazam para cima de 3 Hz</b> — e um filtro cego cortaria junto a informação de baixa rotação (marcha lenta a 800 rpm = 13 Hz). A referência no casco distingue <i>origem</i>, não só frequência: o que os dois sensores veem juntos é barco; o que só o sensor do motor vê é máquina. É a mesma lógica de cancelamento dos fones com ANC.</div>
+</section>
+
+<!-- ============================================================ specs -->
+<section id="specs">
+  <div class="kick">ESPECIFICAÇÕES</div>
+  <h2>Uma moeda de lítio.<br>Um ano de vigília.</h2>
+  <p class="sub">ESP32-C3 SuperMini + acelerômetro LIS3DH num puck Ø54 mm impresso em ASA. Cola no motor com fita 3M VHB, dorme a 20 µA e só liga o rádio para entregar o que já processou. <b>R$ ~110 por ponto monitorado.</b></p>
+  <div class="grid">
+    <div class="card"><div class="big">±16 g <small>· 3,2 kHz</small></div><div class="lbl"><b>LIS3DH</b> · 3 eixos, FIFO, 2 µA em standby · banda de análise 10–1600 Hz — cobre de desbalanceamento a rolamento</div></div>
+    <div class="card"><div class="big">ESP32-C3</div><div class="lbl">SuperMini · RISC-V 160 MHz · <b>Wi-Fi 2,4 GHz</b> · FFT e features a bordo · deep sleep ~20 µA (LED removido)</div></div>
+    <div class="card"><div class="big">CR2477</div><div class="lbl">Célula de lítio 3 V / 1000 mAh · <b>~12 meses</b> de operação · troca em 20 s pela tampa roscada, sem descolar a fita</div></div>
+    <div class="card"><div class="big">Ø54 × 30 <small>mm</small></div><div class="lbl">Puck em <b>ASA</b> com berço baioneta · 42 g · IP66 alvo (rosca + O-ring radial, receita da família Térmica)</div></div>
+    <div class="card"><div class="big">Wi-Fi + REST</div><div class="lbl">Acorda, entrega <b>JSON por HTTP</b> ao hub e volta a dormir · app e dashboard puxam da mesma API · zero gateway proprietário</div></div>
+    <div class="card"><div class="big">96 <small>medições/dia</small></div><div class="lbl">Rajada de 0,64 s a cada 10 min + transmissão consolidada a cada 4 h · <b>memória local de 7 dias</b> se a rede cair</div></div>
+  </div>
+</section>
+
+<!-- ============================================================ energia -->
+<section id="energia">
+  <div class="kick">ARQUITETURA DE ENERGIA</div>
+  <h2>A moeda fornece a média.<br>O supercapacitor, o pico.</h2>
+  <p class="sub">Uma CR2477 entrega microamperes com 1000 mAh de fôlego — mas o rádio Wi-Fi pede rajadas de centenas de miliamperes. A solução clássica de eletrônica de baixa potência: separar <b>energia</b> de <b>potência</b>. A célula carrega um supercapacitor híbrido a conta-gotas (≤ 4 mA); o rádio só liga quando a reserva está cheia.</p>
+  <div class="tableCard"><table>
+    <tr><th>Estado</th><th>Corrente</th><th>Duração / cadência</th><th>Orçamento diário</th></tr>
+    <tr><td>Deep sleep</td><td>~20 µA (SuperMini com LED removido) + 2 µA LIS3DH</td><td>~99,7 % do tempo</td><td>0,53 mAh</td></tr>
+    <tr><td>Medição</td><td>~25 mA (CPU + I²C lendo o FIFO)</td><td>0,9 s × 96/dia</td><td>0,60 mAh</td></tr>
+    <tr><td>Transmissão Wi-Fi</td><td>pico 300 mA — <em>vem do supercapacitor</em></td><td>~2,5 s × 6/dia</td><td>0,52 mAh</td></tr>
+    <tr><td>Recarga do supercap</td><td>limitada a 4 mA (dentro do pulso seguro da célula)</td><td>~3 min antes de cada TX</td><td>—</td></tr>
+    <tr><td>Total</td><td colspan="2">≈ 1,7 mAh/dia → CR2477 1000 mAh com 30 % de margem</td><td><em>~12 meses</em></td></tr>
+  </table></div>
+  <div class="note"><b>Regra de ouro do projeto:</b> o rádio nunca liga direto na célula. Um limitador de corrente de 2 componentes (R1 680 Ω + Schottky, veja o <a href="#eletrica">projeto elétrico</a>) carrega o supercapacitor híbrido de 3,8 V / 5 F; o ESP32-C3 monitora a tensão da reserva pelo ADC e só inicia a conexão Wi-Fi com energia garantida para a rajada inteira. Se a rede estiver fora do ar, as medições ficam na flash (7 dias) e seguem na próxima janela — <b>nenhum dado se perde, nenhuma rajada mata a bateria</b>.</div>
+</section>
+
+<!-- ============================================================ elétrica -->
+<section id="eletrica">
+  <div class="kick">PROJETO ELÉTRICO</div>
+  <h2>Nenhum fio atravessa a case.</h2>
+  <p class="sub">Energia da moeda, dados pelo rádio: o VIB não tem prensa-cabo, conector externo nem furo — <b>IP66 por construção</b>. Todo o circuito cabe em 14 componentes, sem PCB customizada na v1: os módulos se interligam com fio wrap AWG30 e verniz conformal.</p>
+  <div class="schWrap">
+    <svg viewBox="0 0 980 520" xmlns="http://www.w3.org/2000/svg" font-family="'Source Sans 3',-apple-system,'Segoe UI',Roboto,sans-serif">
+      <!-- limite da case -->
+      <rect x="18" y="30" width="944" height="446" rx="16" fill="none" stroke="#23304A" stroke-width="1.6" stroke-dasharray="7 6" opacity=".65"/>
+      <text x="490" y="54" fill="#23304A" font-size="11.5" text-anchor="middle" letter-spacing="2">INTERIOR DA CASE · ESTANQUE IP66 · SEM PASSAGEM DE CABO</text>
+
+      <!-- célula CR2477 -->
+      <circle cx="104" cy="210" r="40" fill="#f3f5f9" stroke="#c6cdd9"/>
+      <text x="104" y="200" fill="#6b7385" font-size="10.5" text-anchor="middle" letter-spacing="1">BT1</text>
+      <text x="104" y="216" fill="#23304A" font-size="13" font-weight="700" text-anchor="middle">CR2477</text>
+      <text x="104" y="231" fill="#6b7385" font-size="10" text-anchor="middle">3 V · 1000 mAh</text>
+      <text x="104" y="272" fill="#6b7385" font-size="9.5" text-anchor="middle">abas soldadas · poço da bandeja</text>
+      <!-- + para R1 -->
+      <line x1="144" y1="210" x2="188" y2="210" stroke="#c0392b" stroke-width="2.5"/>
+      <text x="158" y="200" fill="#c0392b" font-size="10">+3 V</text>
+      <!-- R1 limitador -->
+      <rect x="188" y="202" width="52" height="16" rx="3" fill="none" stroke="#a16207" stroke-width="2"/>
+      <text x="214" y="192" fill="#a16207" font-size="10.5" text-anchor="middle">R1 · 680 Ω</text>
+      <text x="214" y="234" fill="#6b7385" font-size="9.5" text-anchor="middle">limita a ≤4 mA</text>
+      <line x1="240" y1="210" x2="272" y2="210" stroke="#c0392b" stroke-width="2.5"/>
+      <!-- D1 Schottky -->
+      <polygon points="272,200 272,220 292,210" fill="none" stroke="#a16207" stroke-width="2"/>
+      <line x1="292" y1="200" x2="292" y2="220" stroke="#a16207" stroke-width="2.5"/>
+      <text x="282" y="190" fill="#a16207" font-size="10.5" text-anchor="middle">D1 · BAT60</text>
+      <text x="282" y="240" fill="#6b7385" font-size="9.5" text-anchor="middle">anti-refluxo</text>
+      <line x1="292" y1="210" x2="340" y2="210" stroke="#c2410c" stroke-width="2.5"/>
+      <!-- nó VDD -->
+      <circle cx="340" cy="210" r="3.4" fill="#c2410c"/>
+      <text x="352" y="196" fill="#c2410c" font-size="11" font-weight="700" text-anchor="middle">VDD 2,8–3,0 V</text>
+      <!-- divisor de tensão Vcap (mede o nó VDD) -->
+      <line x1="340" y1="210" x2="340" y2="252" stroke="#c2410c" stroke-width="2"/>
+      <rect x="332" y="252" width="16" height="34" rx="3" fill="none" stroke="#6b7385" stroke-width="1.8"/>
+      <text x="326" y="272" fill="#6b7385" font-size="9.5" text-anchor="end">R2 1 MΩ</text>
+      <line x1="340" y1="286" x2="340" y2="306" stroke="#7c3aed" stroke-width="2"/>
+      <circle cx="340" cy="306" r="2.8" fill="#7c3aed"/>
+      <rect x="332" y="306" width="16" height="34" rx="3" fill="none" stroke="#6b7385" stroke-width="1.8"/>
+      <text x="326" y="326" fill="#6b7385" font-size="9.5" text-anchor="end">R3 1 MΩ</text>
+      <line x1="340" y1="340" x2="340" y2="430" stroke="#5b6270" stroke-width="2"/>
+      <path d="M340 306 H 480 V 386 H 588" fill="none" stroke="#7c3aed" stroke-width="2"/>
+      <text x="492" y="378" fill="#7c3aed" font-size="9.5">Vcap/2 → GPIO0</text>
+      <!-- C1 supercap -->
+      <line x1="420" y1="210" x2="420" y2="280" stroke="#c2410c" stroke-width="2.5"/>
+      <line x1="400" y1="280" x2="440" y2="280" stroke="#23304A" stroke-width="3"/>
+      <path d="M400 292 q 20 10 40 0" fill="none" stroke="#23304A" stroke-width="3"/>
+      <line x1="420" y1="294" x2="420" y2="430" stroke="#5b6270" stroke-width="2.5"/>
+      <text x="432" y="252" fill="#23304A" font-size="10.5" font-weight="700" text-anchor="start">C1 · LIC 3,8 V / 5 F</text>
+      <text x="432" y="266" fill="#6b7385" font-size="9.5" text-anchor="start">reserva da rajada Wi-Fi</text>
+      <!-- C3/C4 desacoplamento -->
+      <line x1="545" y1="210" x2="545" y2="256" stroke="#c2410c" stroke-width="2"/>
+      <line x1="533" y1="256" x2="557" y2="256" stroke="#23304A" stroke-width="2.5"/>
+      <line x1="533" y1="264" x2="557" y2="264" stroke="#23304A" stroke-width="2.5"/>
+      <line x1="545" y1="264" x2="545" y2="430" stroke="#5b6270" stroke-width="2"/>
+      <text x="533" y="284" fill="#6b7385" font-size="9.5" text-anchor="end">C3 100 µF X5R</text>
+      <text x="533" y="297" fill="#6b7385" font-size="9.5" text-anchor="end">+ C4 10 µF</text>
+      <!-- rail p/ ESP -->
+      <line x1="340" y1="210" x2="566" y2="210" stroke="#c2410c" stroke-width="2.5"/>
+      <line x1="566" y1="210" x2="566" y2="150" stroke="#c2410c" stroke-width="2.5"/>
+      <line x1="566" y1="150" x2="588" y2="150" stroke="#c2410c" stroke-width="2.5"/>
+      <!-- ESP32-C3 -->
+      <rect x="588" y="96" width="160" height="300" rx="12" fill="#f3f5f9" stroke="#c6cdd9"/>
+      <text x="668" y="120" fill="#6b7385" font-size="10.5" text-anchor="middle" letter-spacing="1">U1 · ESP32-C3 SUPERMINI</text>
+      <text x="668" y="138" fill="#23304A" font-size="12.5" font-weight="700" text-anchor="middle">FFT + features + Wi-Fi</text>
+      <path d="M668 78 v12 m-9 -20 a12 12 0 0 1 18 0 m-25 -8 a22 22 0 0 1 32 0" fill="none" stroke="#23304A" stroke-width="2" stroke-linecap="round"/>
+      <text x="700" y="72" fill="#23304A" font-size="10">Wi-Fi 2,4 GHz · rajada 2,5 s</text>
+      <text x="598" y="162" fill="#c2410c" font-size="10">3V3 · direto no trilho</text>
+      <text x="598" y="390" fill="#7c3aed" font-size="10">GPIO0 · ADC</text>
+      <text x="738" y="146" fill="#c2410c" font-size="10" text-anchor="end">3V3 →</text>
+      <text x="738" y="188" fill="#2563eb" font-size="10" text-anchor="end">GPIO8 · SDA</text>
+      <text x="738" y="224" fill="#15803d" font-size="10" text-anchor="end">GPIO9 · SCL</text>
+      <text x="738" y="260" fill="#7c3aed" font-size="10" text-anchor="end">GPIO3 · INT1</text>
+      <text x="738" y="308" fill="#a16207" font-size="10" text-anchor="end">GPIO1 · reed</text>
+      <text x="738" y="344" fill="#15803d" font-size="10" text-anchor="end">GPIO10 · LED</text>
+      <!-- VDD + I2C p/ LIS3DH -->
+      <line x1="748" y1="150" x2="812" y2="150" stroke="#c2410c" stroke-width="2.5"/>
+      <line x1="748" y1="184" x2="812" y2="184" stroke="#2563eb" stroke-width="2.5"/>
+      <line x1="748" y1="220" x2="812" y2="220" stroke="#15803d" stroke-width="2.5"/>
+      <line x1="748" y1="256" x2="812" y2="256" stroke="#7c3aed" stroke-width="2.5"/>
+      <text x="780" y="142" fill="#c2410c" font-size="9.5" text-anchor="middle">VDD</text>
+      <text x="780" y="176" fill="#2563eb" font-size="9.5" text-anchor="middle">SDA</text>
+      <text x="780" y="212" fill="#15803d" font-size="9.5" text-anchor="middle">SCL</text>
+      <text x="780" y="248" fill="#7c3aed" font-size="9.5" text-anchor="middle">INT1</text>
+      <text x="780" y="268" fill="#6b7385" font-size="8.5" text-anchor="middle">wake por impacto</text>
+      <!-- LIS3DH -->
+      <rect x="812" y="112" width="128" height="196" rx="12" fill="#f3f5f9" stroke="#23304A"/>
+      <text x="876" y="136" fill="#23304A" font-size="10.5" text-anchor="middle" letter-spacing="1" font-weight="700">U2 · LIS3DH</text>
+      <text x="876" y="152" fill="#6b7385" font-size="10" text-anchor="middle">±16 g · 3,2 kHz · FIFO</text>
+      <text x="876" y="168" fill="#6b7385" font-size="9" text-anchor="middle">2 µA em standby</text>
+      <text x="876" y="196" fill="#6b7385" font-size="9.5" text-anchor="middle">I²C addr 0x18 · 400 kHz</text>
+      <text x="876" y="210" fill="#6b7385" font-size="9.5" text-anchor="middle">pull-ups 4,7 kΩ no módulo</text>
+      <rect x="856" y="240" width="40" height="30" rx="4" fill="#e7ebf2" stroke="#8b93a5"/>
+      <text x="876" y="259" fill="#444b5c" font-size="9" text-anchor="middle">MEMS</text>
+      <text x="876" y="288" fill="#6b7385" font-size="9.5" text-anchor="middle">no poço rígido da base</text>
+      <line x1="876" y1="344" x2="876" y2="430" stroke="#5b6270" stroke-width="2" opacity="0"/>
+      <line x1="912" y1="308" x2="912" y2="430" stroke="#5b6270" stroke-width="2"/>
+      <!-- reed switch (à direita do ESP, abaixo da caixa do LIS) -->
+      <line x1="748" y1="304" x2="777" y2="304" stroke="#a16207" stroke-width="2"/>
+      <circle cx="781" cy="304" r="3" fill="none" stroke="#a16207" stroke-width="1.8"/>
+      <line x1="784" y1="302" x2="802" y2="294" stroke="#a16207" stroke-width="2"/>
+      <circle cx="806" cy="293" r="3" fill="none" stroke="#a16207" stroke-width="1.8"/>
+      <line x1="806" y1="296" x2="806" y2="430" stroke="#5b6270" stroke-width="2"/>
+      <text x="793" y="282" fill="#a16207" font-size="9.5" text-anchor="middle">S1 · reed</text>
+      <text x="860" y="362" fill="#6b7385" font-size="9" text-anchor="middle">ímã por fora</text>
+      <text x="860" y="375" fill="#6b7385" font-size="9" text-anchor="middle">= modo AP</text>
+      <!-- LED (desce do GPIO10) -->
+      <line x1="748" y1="340" x2="760" y2="340" stroke="#15803d" stroke-width="2"/>
+      <line x1="760" y1="340" x2="760" y2="352" stroke="#15803d" stroke-width="2"/>
+      <rect x="753" y="352" width="14" height="28" rx="3" fill="none" stroke="#8b93a5" stroke-width="1.6"/>
+      <line x1="760" y1="380" x2="760" y2="390" stroke="#15803d" stroke-width="2"/>
+      <circle cx="760" cy="396" r="6" fill="none" stroke="#15803d" stroke-width="2"/>
+      <line x1="760" y1="402" x2="760" y2="430" stroke="#5b6270" stroke-width="2"/>
+      <text x="746" y="368" fill="#6b7385" font-size="9" text-anchor="end">R4 1 kΩ</text>
+      <text x="746" y="399" fill="#15803d" font-size="9" text-anchor="end">LED1</text>
+      <!-- GND rail -->
+      <line x1="60" y1="430" x2="920" y2="430" stroke="#8b93a5" stroke-width="1.5" stroke-dasharray="3 4" opacity=".8"/>
+      <text x="490" y="450" fill="#6b7385" font-size="9.5" text-anchor="middle">GND comum — flutuante: nenhuma conexão com o casco ou o negativo do barco</text>
+      <line x1="104" y1="250" x2="104" y2="430" stroke="#5b6270" stroke-width="2"/>
+      <line x1="668" y1="396" x2="668" y2="430" stroke="#5b6270" stroke-width="2.5"/>
+      <text x="656" y="416" fill="#5b6270" font-size="9.5" text-anchor="end">GND</text>
+    </svg>
+  </div>
+  <div class="legend">
+    <span><i style="background:#c0392b"></i>+3 V célula</span>
+    <span><i style="background:#c2410c"></i>VDD (trilho supercap)</span>
+    <span><i style="background:#2563eb"></i>SDA</span>
+    <span><i style="background:#15803d"></i>SCL / LED</span>
+    <span><i style="background:#7c3aed"></i>INT1 / ADC</span>
+    <span><i style="background:#a16207"></i>limitador / reed</span>
+    <span><i style="background:#5b6270"></i>GND</span>
+  </div>
+  <div class="note"><b>Três decisões que definem o circuito:</b> ① o ESP32-C3 é alimentado <b>pelo pino 3V3</b>, direto do trilho do supercap — o LDO da SuperMini fica fora do caminho (economiza o quiescente) e o USB-C segue funcionando na bancada; ② o divisor R2/R3 de 1 MΩ dá leitura de Vcap com consumo de 1,5 µA — o firmware só transmite com Vcap ≥ 2,9 V; ③ o INT1 do LIS3DH acorda o ESP em <b>impacto forte</b> (wake-on-motion): um evento anômalo fura a fila e é reportado na hora, não na próxima janela.</div>
+  <div class="note warn"><b>Firmware — brownout em 2,55 V:</b> o trilho afunda durante a rajada Wi-Fi (ESR do supercap); com o detector padrão em 2,7 V o rádio reiniciaria no meio da transmissão. Ajustar <code>CONFIG_ESP_BROWNOUT_DET_LVL</code> e validar a rajada inteira no osciloscópio antes de fechar a case.</div>
+
+  <div style="height:44px"></div>
+  <div class="kick">PROTÓTIPO Nº 1 · LISTA COMPLETA</div>
+  <h2 style="font-size:clamp(22px,3vw,30px)">Tudo que vai na bancada.</h2>
+  <p class="sub">Compra única para montar o primeiro sensor completo — eletrônica, vedação, fixação e impressão. Referências de exemplo; qualquer equivalente serve.</p>
+  <div class="tableCard"><table>
+    <tr><th>Ref.</th><th>Componente</th><th>Especificação / exemplo</th><th>Função</th><th>Qtd.</th><th>Custo</th></tr>
+    <tr><td>U1</td><td>ESP32-C3 SuperMini</td><td>Wi-Fi 2,4 GHz, USB-C, RISC-V 160 MHz</td><td>Cérebro: FFT, features, rádio</td><td>1</td><td>R$ 25</td></tr>
+    <tr><td>U2</td><td>Módulo LIS3DH</td><td>Breakout I²C 3V3 (ex. GY-LIS3DH / Adafruit 2809)</td><td>Acelerômetro ±16 g, 3,2 kHz</td><td>1</td><td>R$ 14</td></tr>
+    <tr><td>BT1</td><td>Célula CR2477</td><td>3 V / 1000 mAh, <em>com abas soldadas</em> (não usar suporte de pressão: vibração)</td><td>Energia média por ~12 meses</td><td>1</td><td>R$ 18</td></tr>
+    <tr><td>C1</td><td>Supercapacitor híbrido (LIC)</td><td>3,8 V / 5 F, Ø10×20 (ex. Vinatech VEL) — ou 2× EDLC 10 F 2,7 V em série</td><td>Reserva de pico da rajada Wi-Fi</td><td>1</td><td>R$ 15</td></tr>
+    <tr><td>R1</td><td>Resistor 680 Ω</td><td>1/4 W 1%</td><td>Limita a recarga do supercap a ≤4 mA</td><td>1</td><td>R$ 0,10</td></tr>
+    <tr><td>D1</td><td>Diodo Schottky</td><td>BAT60A (queda ~0,15 V) ou BAT85</td><td>Impede o supercap de descarregar na célula</td><td>1</td><td>R$ 0,50</td></tr>
+    <tr><td>R2, R3</td><td>Resistores 1 MΩ</td><td>1/4 W 1%</td><td>Divisor de leitura de Vcap (GPIO0/ADC)</td><td>2</td><td>R$ 0,20</td></tr>
+    <tr><td>C2</td><td>Capacitor 100 nF</td><td>Cerâmico X7R</td><td>Filtro do ADC no nó do divisor</td><td>1</td><td>R$ 0,20</td></tr>
+    <tr><td>C3, C4</td><td>Capacitores 100 µF + 10 µF</td><td>Cerâmicos X5R 6,3 V (não usar eletrolítico: vibração + vida útil)</td><td>Desacoplamento do trilho na rajada</td><td>2</td><td>R$ 3</td></tr>
+    <tr><td>S1</td><td>Reed switch + ímã</td><td>Reed NA 2×14 mm + ímã neodímio Ø5×3</td><td>Modo comissionamento (AP) sem abrir a case</td><td>1+1</td><td>R$ 4</td></tr>
+    <tr><td>LED1, R4</td><td>LED 3 mm + resistor 1 kΩ</td><td>Verde alto brilho</td><td>Status na bancada (remover depois: −25 µA)</td><td>1+1</td><td>R$ 0,50</td></tr>
+    <tr><td>—</td><td>Fio + verniz</td><td>Fio wrap AWG30 + verniz conformal acrílico</td><td>Interligação e proteção salina</td><td>—</td><td>R$ 8</td></tr>
+    <tr><td>—</td><td>O-ring 40×2</td><td>NBR 70 Shore + graxa de silicone</td><td>Vedação radial corpo×base</td><td>1</td><td>R$ 3</td></tr>
+    <tr><td>—</td><td>Sílica-gel</td><td>Sachê 1 g</td><td>Seca o ar interno selado</td><td>1</td><td>R$ 1</td></tr>
+    <tr><td>—</td><td>Fita 3M VHB 5952</td><td>Disco Ø55 (cortar de rolo 19 mm ou manta)</td><td>Colagem definitiva do berço no motor</td><td>1</td><td>R$ 12</td></tr>
+    <tr><td>—</td><td>Impressão ASA</td><td>corpo + base + bandeja + berço (~38 g) + epóxi de selagem</td><td>Case IP66 + acoplamento mecânico</td><td>4 pçs</td><td>R$ 14</td></tr>
+    <tr><td>—</td><td>Parafusos inox A4 (opcional)</td><td>2× Ø3,5×16 auto-atarraxantes escareados</td><td>Alternativa parafusada ao VHB no berço</td><td>2</td><td>R$ 2</td></tr>
+    <tr><td colspan="4">Total do protótipo nº 1 (sensor completo instalado)</td><td></td><td><em>R$ ~120</em></td></tr>
+  </table></div>
+  <div class="note">Para o <b>kit bimotor</b> (3 pontos: BB + BE + referência), multiplique a eletrônica por 3 — os itens de bancada (fio, verniz, graxa, epóxi) rendem para a frota inteira. Ferramentas necessárias: ferro de solda, multímetro e a Bambu. Nada de estação de retrabalho ou PCB na v1.</div>
+</section>
+
+<!-- ============================================================ api -->
+<section id="api">
+  <div class="kick">API</div>
+  <h2>JSON simples, direto no app<br>e no dashboard.</h2>
+  <p class="sub">O sensor acorda e <b>empurra</b> as medições consolidadas por HTTP ao hub SAFEBOAT (o mesmo computador de bordo da Térmica). O hub guarda o histórico e serve a API que o app e o dashboard <b>puxam</b> — o sensor nunca precisa estar acordado para a consulta.</p>
+  <div class="apiGrid">
+    <div>
+      <pre class="api"><span class="c">// Sensor → hub (a cada 4 h, ou imediato se zona ≥ C)</span>
+<span class="k">POST</span> /api/v1/ingest
+{
+  <span class="n">"device"</span>: <span class="s">"vib-bb-01"</span>,
+  <span class="n">"fw"</span>: <span class="s">"1.0.3"</span>, <span class="n">"vbat"</span>: <span class="s">2.94</span>, <span class="n">"vcap"</span>: <span class="s">3.62</span>,
+  <span class="n">"readings"</span>: [{
+    <span class="n">"ts"</span>: <span class="s">1784216400</span>,
+    <span class="n">"rpm"</span>: <span class="s">1810</span>,
+    <span class="n">"rms_mms"</span>: <span class="s">2.31</span>,
+    <span class="n">"crest"</span>: <span class="s">3.4</span>, <span class="n">"kurt"</span>: <span class="s">3.1</span>,
+    <span class="n">"a1x_g"</span>: <span class="s">0.051</span>, <span class="n">"a2x_g"</span>: <span class="s">0.017</span>,
+    <span class="n">"bands_g"</span>: [<span class="s">0.02</span>, <span class="s">0.05</span>, <span class="s">0.01</span>, <span class="s">0.008</span>],
+    <span class="n">"temp_c"</span>: <span class="s">41.5</span>
+  }]
+}</pre>
+    </div>
+    <div>
+      <pre class="api"><span class="c">// App / dashboard → hub</span>
+<span class="k">GET</span> /api/v1/devices                 <span class="c">← frota + bateria + zona</span>
+<span class="k">GET</span> /api/v1/devices/:id/latest      <span class="c">← última medição</span>
+<span class="k">GET</span> /api/v1/devices/:id/history?h=720
+<span class="k">GET</span> /api/v1/devices/:id/spectrum    <span class="c">← último espectro 64 bins</span>
+<span class="k">GET</span> /api/v1/alerts?since=…          <span class="c">← feed de diagnósticos</span>
+
+<span class="c">// Exemplo: zona de cada motor no dashboard</span>
+$ curl hub.safeboat.local/api/v1/devices
+[{ <span class="n">"id"</span>: <span class="s">"vib-bb-01"</span>, <span class="n">"zone"</span>: <span class="s">"B"</span>,
+   <span class="n">"rms_mms"</span>: <span class="s">2.31</span>, <span class="n">"battery_pct"</span>: <span class="s">78</span>,
+   <span class="n">"days_to_C"</span>: <span class="s">null</span> },
+ { <span class="n">"id"</span>: <span class="s">"vib-ref-casco"</span>, <span class="n">"zone"</span>: <span class="s">"—"</span> }]</pre>
+    </div>
+  </div>
+  <div class="note">Comissionamento sem app externo: no primeiro boot (ou segurando o ímã de serviço), o sensor sobe um AP <code>VIB-XXXX</code> com página de configuração em <code>192.168.4.1</code> — SSID do barco, nome do ponto e pronto. Atualização de firmware é <b>OTA na janela de transmissão</b>, assinada pelo hub.</div>
+</section>
+
+<!-- ============================================================ fixação -->
+<section id="fixacao">
+  <div class="kick">FIXAÇÃO</div>
+  <h2>A fita fica no motor.<br>O sensor gira e trava.</h2>
+  <p class="sub">O berço baioneta é colado uma única vez com <b>3M VHB 5952</b> — fita acrílica estrutural que aguenta óleo, calor de praça de máquinas e anos de vibração. O sensor encaixa no berço e trava com <b>30° de giro</b>: trocar bateria ou remanejar o ponto nunca mexe na colagem.</p>
+  <div class="grid">
+    <div class="card"><div class="big">3M VHB 5952</div><div class="lbl">Disco Ø55 mm · adesão em metal pintado/alumínio · <b>desengraxar com isopropílico</b> e pressionar 15 s. Rigidez suficiente até ~1 kHz de banda útil.</div></div>
+    <div class="card"><div class="big">30°</div><div class="lbl">Baioneta de 3 orelhas com batente e detente — <b>solta com a mão</b>, não solta com vibração. Furos escareados no berço p/ parafusar em vez de colar, se preferir.</div></div>
+    <div class="card"><div class="big">6 mm</div><div class="lbl">Distância do MEMS à superfície do motor. O LIS3DH é <b>rigidamente acoplado à base</b> — nada de sensor flutuando em bandeja.</div></div>
+    <div class="card"><div class="big">≤ 70 °C</div><div class="lbl">Temperatura contínua no ponto de fixação (limite da célula de lítio). Bloco de motor: fixar na <b>carcaça/pé</b>, nunca no coletor de escape.</div></div>
+  </div>
+  <div style="height:22px"></div>
+  <div class="tableCard"><table>
+    <tr><th>Ponto (kit padrão)</th><th>Onde</th><th>O que enxerga</th></tr>
+    <tr><td>vib-bb-01</td><td>Pé/carcaça do motor de boreste, lado do volante</td><td>Desbalanceamento e desalinhamento do conjunto motor–eixo BB</td></tr>
+    <tr><td>vib-be-01</td><td>Pé/carcaça do motor de bombordo, lado do volante</td><td>Idem BE — e a <em>comparação BB×BE</em> acusa qual motor mudou</td></tr>
+    <tr><td>vib-ref-casco</td><td>Longarina/anteparo a ≥1 m dos motores</td><td>Só a dinâmica do barco — é a referência do cancelamento de mar</td></tr>
+  </table></div>
+  <div class="note warn"><b>Dois motores são um bônus de diagnóstico:</b> em barcos bimotores, BB e BE navegam o mesmo mar — qualquer divergência entre os dois espectros na mesma rotação é mecânica, não ambiente. O hub cruza os três sensores (BB, BE, referência) e a falha aparece com o dedo apontado.</div>
+</section>
+
+<!-- ============================================================ fabricação -->
+<section id="fabricacao">
+  <div class="kick">FABRICAÇÃO</div>
+  <h2>Feito para a sua Bambu Lab.</h2>
+  <p class="sub">Quatro peças, uma chapa, ~3 h de impressão. Mesma receita de vedação validada no Vigia e na Térmica: rosca + O-ring radial.</p>
+  <div class="tableCard"><table>
+    <tr><th>Parâmetro</th><th>Valor</th><th>Observação</th></tr>
+    <tr><td>Material</td><td>Bambu ASA (ou PETG-HF)</td><td>ASA: UV + 100 °C ambiente — obrigatório perto de motor</td></tr>
+    <tr><td>Camada</td><td>0,16 mm</td><td>Rosca Ø50×P2,5, canal de O-ring e baioneta saem limpos</td></tr>
+    <tr><td>Perímetros</td><td>5 paredes · 40 % gyroid</td><td>Rigidez importa: case mole filtra a vibração que queremos medir</td></tr>
+    <tr><td>Orientação</td><td>Corpo: topo na chapa · Base: flange na chapa · Bandeja e berço: face plana na chapa</td><td>Chapa PEI texturizada = acabamento fosco premium na face da marca</td></tr>
+    <tr><td>Suportes</td><td>Nenhum</td><td>Canal da baioneta tem ponte de 2,7 mm — imprime sem suporte</td></tr>
+    <tr><td>Pós-processo</td><td>Epóxi interno no corpo · teste de mergulho 30 min</td><td>FDM selado com epóxi = estanque na prática (não certificado)</td></tr>
+  </table></div>
+
+  <div style="height:44px"></div>
+  <div class="kick">MONTAGEM</div>
+  <h2 style="font-size:clamp(22px,3vw,30px)">Oito passos.</h2>
+  <div style="height:14px"></div>
+  <ol class="steps">
+    <li><b>Sele o interior</b> do corpo com uma demão fina de epóxi e cure por 24 h.</li>
+    <li><b>Encaixe o LIS3DH</b> no poço central do deck da base — módulo prensado na moldura, com um ponto de epóxi nos cantos. É o único componente que exige rigidez.</li>
+    <li><b>Monte a bandeja:</b> CR2477 com abas soldadas no poço (abas pelas janelas laterais), ESP32-C3 entre as nervuras com fita VHB, supercapacitor deitado ao lado.</li>
+    <li><b>Ligue a elétrica</b> conforme o <a href="#eletrica">diagrama</a>: BT1 → R1 680 Ω → D1 Schottky → C1 supercap → pino 3V3; LIS3DH no I²C (GPIO8/9) com INT1 no GPIO3; reed S1 no GPIO1; divisor R2/R3 no GPIO0. Verniz conformal em tudo.</li>
+    <li><b>Grave o firmware</b> via USB-C, configure SSID/hub no AP de comissionamento e confirme o primeiro POST no hub.</li>
+    <li><b>Assente a bandeja</b> nas espigas dos 3 postes e rosqueie o corpo com o O-ring 40×2 engraxado no canal da base.</li>
+    <li><b>Cole o berço:</b> desengraxe o ponto do motor com isopropílico, aplique o disco de VHB 5952 no berço, posicione e pressione por 15 s. Espere 1 h antes de carregar.</li>
+    <li><b>Trave o sensor</b> no berço (30° até o clique) e confira o ponto no dashboard. O baseline por regime se constrói sozinho na primeira semana de operação.</li>
+  </ol>
+
+  <div class="note">A <b>lista completa de componentes</b> do protótipo — eletrônica com designadores, vedação, fita e impressão, com exemplos e custos — está na seção <a href="#eletrica">Projeto Elétrico</a>.</div>
+</section>
+
+<!-- ============================================================ kit -->
+<section id="kit">
+  <div class="kick">COMERCIAL</div>
+  <h2>O ouvido do kit SAFEBOAT.</h2>
+  <p class="sub">A Térmica <b>vê</b> o superaquecimento; o VIB <b>sente</b> a mecânica se degradando — semanas antes de virar calor. Juntos no mesmo hub e no mesmo app, fecham o ciclo da manutenção preditiva embarcada que a indústria (Tractian, Augury) vende para fábricas por assinatura de milhares de reais/ano por ponto. Aqui, é <b>hardware nosso, dado nosso, no kit</b>.</p>
+  <div class="kitGrid">
+    <div class="kitCard">
+      <h3>VIB Solo</h3>
+      <div class="who">Monomotor · entrada da linha</div>
+      <ul>
+        <li><b>2 sensores</b>: motor + referência de casco</li>
+        <li>Cancelamento de mar + ISO 10816 + tendência</li>
+        <li>Alertas no app SAFEBOAT</li>
+        <li>Bateria anual, troca pelo cliente</li>
+      </ul>
+    </div>
+    <div class="kitCard hl">
+      <div class="flag">KIT PADRÃO</div>
+      <h3>VIB Bimotor</h3>
+      <div class="who">Lanchas bimotores · o dedo apontado</div>
+      <ul>
+        <li><b>3 sensores</b>: BB + BE + referência</li>
+        <li>Comparação BB×BE — divergência = mecânica</li>
+        <li>Diagnóstico por assinatura (1×, 2×, rolamento, folga)</li>
+        <li>Preditivo: dias até a zona C, por regime</li>
+        <li>Integra Térmica + Vigia no mesmo dashboard</li>
+      </ul>
+    </div>
+    <div class="kitCard">
+      <h3>VIB Frota</h3>
+      <div class="who">Marinas e operadores · escala</div>
+      <ul>
+        <li>Sensores por barco + baseline compartilhado por modelo de motor</li>
+        <li>Ranking de saúde da frota no dashboard</li>
+        <li>Relatório mensal por embarcação</li>
+        <li>Estoque de células e O-rings de reposição</li>
+      </ul>
+    </div>
+  </div>
+  <div class="note"><b>Posicionamento:</b> o VIB não é vendido avulso — ele <b>anexa valor ao kit SAFEBOAT</b>: quem já tem a Térmica ganha o segundo sentido pelo custo de hardware + instalação, e o kit completo passa a cobrir os dois caminhos de falha do motor (térmico e mecânico). A régua de comparação é a Tractian: mesma classe de análise espectral, sem mensalidade por ponto.</div>
+</section>
+
+<!-- ============================================================ downloads -->
+<section id="downloads">
+  <div class="kick">DOWNLOADS</div>
+  <h2>Arquivos do projeto.</h2>
+  <p class="sub">STLs prontos para fatiar no Bambu Studio. Modelos gerados parametricamente — edite <code>tools/generate-stl.cjs</code> para ajustar qualquer cota. A rede de análise está em <code>public/engine.js</code>.</p>
+  <div class="dl">
+    <a href="stl/corpo.stl" download><span class="n">corpo.stl</span><span class="d">Copo Ø54×26 · marca gravada</span></a>
+    <a href="stl/base.stl" download><span class="n">base.stl</span><span class="d">Rosca + O-ring + baioneta + poço LIS3DH</span></a>
+    <a href="stl/bandeja.stl" download><span class="n">bandeja.stl</span><span class="d">Carrier CR2477 + ESP32-C3</span></a>
+    <a href="stl/berco.stl" download><span class="n">berco.stl</span><span class="d">Berço baioneta Ø60 · fita VHB</span></a>
+    <a href="engine.js" download><span class="n">engine.js</span><span class="d">Rede de análise de vibração (referência)</span></a>
+  </div>
+</section>
+
+<footer>
+  <img src="img/logo-safeboat-branco.png" alt="SAFEBOAT">
+  <div class="tagline">ENGENHARIA NAVAL &amp; PREVENÇÃO</div>
+  VIB — sensor de vibração autônomo com cancelamento de mar · LIS3DH + ESP32-C3 + CR2477 · 2026
+</footer>
+
+<script src="engine.js"></script>
+<script>
+// ============================================================ demo ao vivo
+;(() => {
+  const { VibraSim, VibraDetector, drawWave, drawSpec, drawTrend } = window.Vibra
+  const sim = new VibraSim()
+  const det = new VibraDetector()
+  let cancel = true
+  const t0 = performance.now()
+  const now = () => (performance.now() - t0) / 1000
+
+  const $ = id => document.getElementById(id)
+  const seaNames = v => v < 0.15 ? 'Mar calmo' : v < 0.45 ? 'Mar moderado' : v < 0.75 ? 'Mar grosso' : 'Temporal'
+  $('sea').addEventListener('input', e => {
+    sim.sea = e.target.value / 100
+    $('seaVal').textContent = seaNames(sim.sea)
+  })
+  $('rpm').addEventListener('input', e => {
+    sim.rpm = +e.target.value
+    $('rpmVal').textContent = `${sim.rpm} rpm · 1× = ${(sim.rpm / 60).toFixed(0)} Hz`
+  })
+  $('comp').addEventListener('click', () => {
+    cancel = !cancel
+    $('comp').classList.toggle('on', cancel)
+    $('comp').textContent = cancel ? 'ATIVA — referência do casco' : 'DESLIGADA — sinal cru'
+  })
+  document.querySelectorAll('#anomBtns [data-f]').forEach(b => b.addEventListener('click', () => {
+    const f = b.dataset.f
+    const on = sim.fault === f
+    sim.setFault(on ? null : f, now())
+    document.querySelectorAll('#anomBtns [data-f]').forEach(x => x.classList.toggle('on', x.dataset.f === sim.fault))
+  }))
+  $('normal').addEventListener('click', () => {
+    sim.setFault(null, now())
+    det.history.length = 0
+    document.querySelectorAll('#anomBtns [data-f]').forEach(x => x.classList.remove('on'))
+  })
+
+  const alertLog = []
+  let lastAlertT = -99
+  function pushAlert (diag, r, t) {
+    if (t - lastAlertT < 12) return
+    lastAlertT = t
+    const when = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    alertLog.unshift({ when, diag, rms: r.rms, zone: VibraDetector.zone(r.rms) })
+    if (alertLog.length > 6) alertLog.pop()
+    const el = $('alerts')
+    el.innerHTML = ''
+    for (const a of alertLog) {
+      const div = document.createElement('div')
+      div.className = 'al' + (a.zone.z === 'D' ? ' critico' : '')
+      div.innerHTML = `<div class="when">${a.when}</div>
+        <div class="what"><b>${a.zone.z === 'D' ? 'CRÍTICO' : 'ALERTA'}</b> · Motor BB · <b>${a.diag.key}</b> — ${a.rms.toFixed(1)} mm/s RMS (zona ${a.zone.z})
+        <div class="diag">${a.diag.txt}</div></div>`
+      el.appendChild(div)
+    }
+  }
+
+  setInterval(() => {
+    const t = now()
+    const { motor, ref } = sim.block(t)
+    const r = det.process(motor, ref, t, cancel)
+
+    const gLimRaw = Math.max(0.6, Math.ceil(sim.sea * 2 * 2) / 2)
+    drawWave($('cvRaw'), motor, '#f59e0b', gLimRaw, 'motor bruto (mar + máquina)')
+    drawWave($('cvComp'), r.comp, '#60a5fa', 0.6, cancel ? 'compensado (mar anulado)' : 'SEM compensação')
+    drawSpec($('cvSpec'), r.spec, r.df, sim.rpm)
+    drawTrend($('cvTrend'), det.history, t)
+
+    const zone = VibraDetector.zone(r.rms)
+    $('gRms').innerHTML = `${r.rms.toFixed(2)} <small>mm/s RMS</small>`
+    const zEl = $('gZone')
+    zEl.textContent = `ZONA ${zone.z} · ${zone.label}`
+    zEl.style.background = zone.color
+    $('gCrest').textContent = r.crest.toFixed(1)
+    $('gKurt').textContent = r.kurt.toFixed(1)
+    $('gK').textContent = cancel ? r.k.toFixed(2) : '—'
+
+    // rolamento em estágio inicial não move o RMS ISO (energia em alta frequência,
+    // velocidade ∝ 1/f) — por isso o caminho paralelo por curtose/crista, como no envelope
+    const bearingRisk = r.kurt > 4 && r.crest > 4.5
+    const st = $('status'), stTxt = $('statusTxt')
+    if (zone.z === 'D') { st.className = 'status alert'; stTxt.textContent = 'Zona D — vibração crítica' }
+    else if (zone.z === 'C') { st.className = 'status warn'; stTxt.textContent = 'Zona C — programar manutenção' }
+    else if (bearingRisk) { st.className = 'status warn'; stTxt.textContent = 'Impactos periódicos — inspecionar rolamento' }
+    else { st.className = 'status ok'; stTxt.textContent = 'Monitorando — vibração normal' }
+
+    if (zone.z === 'C' || zone.z === 'D' || bearingRisk) {
+      const diag = det.diagnose(r, sim.rpm)
+      if (diag) pushAlert(diag, r, t)
+    }
+  }, 320)
+})()
+</script>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/" } }
+</script>
+<script type="module">
+import * as THREE from 'three'
+import { OrbitControls } from './vendor/OrbitControls.js'
+import { STLLoader } from './vendor/STLLoader.js'
+import { RoomEnvironment } from './vendor/RoomEnvironment.js'
+import * as BGU from './vendor/BufferGeometryUtils.js'
+
+const stage = document.getElementById('stage')
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+renderer.shadowMap.enabled = true
+renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.toneMapping = THREE.ACESFilmicToneMapping
+renderer.toneMappingExposure = 1.15
+stage.appendChild(renderer.domElement)
+
+const scene = new THREE.Scene()
+const pmrem = new THREE.PMREMGenerator(renderer)
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+
+const camera = new THREE.PerspectiveCamera(38, 1, 1, 4000)
+camera.position.set(95, 70, 120)
+const controls = new OrbitControls(camera, renderer.domElement)
+controls.target.set(0, 18, 0)
+controls.enableDamping = true
+controls.autoRotate = true
+controls.autoRotateSpeed = 1.1
+controls.minDistance = 50
+controls.maxDistance = 500
+controls.enableZoom = false
+stage.addEventListener('wheel', e => {
+  if (!e.ctrlKey) return
+  e.preventDefault()
+  const dir = camera.position.clone().sub(controls.target)
+  const len = THREE.MathUtils.clamp(dir.length() * (e.deltaY > 0 ? 1.1 : 0.9), controls.minDistance, controls.maxDistance)
+  camera.position.copy(controls.target).addScaledVector(dir.normalize(), len)
+}, { passive: false })
+
+const key = new THREE.DirectionalLight(0xffffff, 1.6)
+key.position.set(120, 220, 140)
+key.castShadow = true
+key.shadow.mapSize.set(2048, 2048)
+const d = 90
+Object.assign(key.shadow.camera, { left: -d, right: d, top: d, bottom: -d, far: 700 })
+key.shadow.bias = -0.0004
+scene.add(key, new THREE.DirectionalLight(0xbcd0ff, 0.35).translateX(-150).translateY(60))
+
+const ground = new THREE.Mesh(new THREE.CircleGeometry(400, 64), new THREE.ShadowMaterial({ opacity: 0.18 }))
+ground.rotation.x = -Math.PI / 2
+ground.position.y = -3.2
+ground.receiveShadow = true
+scene.add(ground)
+
+// ---------- materiais ----------
+const finishes = {
+  branco: { shell: 0xeceae5, rough: 0.4 },
+  grafite: { shell: 0x3a3d42, rough: 0.48 },
+}
+const matShell = new THREE.MeshPhysicalMaterial({ color: finishes.branco.shell, roughness: 0.4, metalness: 0.02, clearcoat: 0.28, clearcoatRoughness: 0.5 })
+const matDark = new THREE.MeshPhysicalMaterial({ color: 0x232529, roughness: 0.6, metalness: 0.05 })
+const matRubber = new THREE.MeshStandardMaterial({ color: 0x101010, roughness: 0.9 })
+const matPCB = new THREE.MeshStandardMaterial({ color: 0x0d2213, roughness: 0.55 })
+const matPCBdark = new THREE.MeshStandardMaterial({ color: 0x101018, roughness: 0.5 })
+const matSteel = new THREE.MeshStandardMaterial({ color: 0xb8bcc2, roughness: 0.3, metalness: 0.9 })
+const matCell = new THREE.MeshStandardMaterial({ color: 0xcfd3d9, roughness: 0.25, metalness: 0.85 })
+const matTape = new THREE.MeshStandardMaterial({ color: 0x8a8d93, roughness: 0.8 })
+
+// ---------- montagem ----------
+// Coordenadas montadas do projeto: z=0 fundo da base, +z p/ cima.
+// STLs: rotX(-90°) leva +z (modelo) → +y (mundo).
+// Alturas: berço piso z=1.5; base assenta no piso (fundo z=1.5); corpo boca z=5.5; bandeja z=20.5.
+const root = new THREE.Group()
+scene.add(root)
+const parts = {}
+const loader = new STLLoader()
+
+function smooth (geo, angle = 32) {
+  let g = BGU.mergeVertices(geo, 1e-3)
+  return BGU.toCreasedNormals(g, THREE.MathUtils.degToRad(angle))
+}
+function addSTL (url, mat, { pos = [0, 0, 0], rot = [-Math.PI / 2, 0, 0], name, dir = [0, 0, 0], dist = 0 }) {
+  return new Promise(res => loader.load(url, geo => {
+    const mesh = new THREE.Mesh(smooth(geo), mat)
+    mesh.rotation.set(...rot)
+    mesh.castShadow = mesh.receiveShadow = true
+    const g = new THREE.Group()
+    g.add(mesh)
+    g.position.set(...pos)
+    g.userData.home = [...pos]
+    root.add(g)
+    parts[name] = { obj: g, dir: new THREE.Vector3(...dir), dist }
+    mesh.userData.label = name
+    res(g)
+  }))
+}
+
+const loadAll = Promise.all([
+  addSTL('stl/berco.stl', matShell, { name: 'Berço baioneta (fica no motor)', pos: [0, 0, 0], dir: [0, -1, 0], dist: 26 }),
+  addSTL('stl/base.stl', matShell, { name: 'Base · rosca + O-ring + poço do LIS3DH', pos: [0, 1.5, 0], dir: [0, 1, 0], dist: 14 }),
+  addSTL('stl/bandeja.stl', matDark, { name: 'Bandeja · CR2477 + ESP32-C3', pos: [0, 20.5, 0], dir: [0, 1, 0], dist: 42 }),
+  addSTL('stl/corpo.stl', matShell, { name: 'Corpo roscado · marca SAFEBOAT', pos: [0, 5.5, 0], dir: [0, 1, 0], dist: 78 }),
+])
+
+function proc (name, mesh, pos, dir, dist) {
+  const g = new THREE.Group()
+  g.add(mesh)
+  g.position.set(...pos)
+  g.userData.home = [...pos]
+  mesh.traverse ? mesh.traverse(m => { if (m.isMesh) { m.castShadow = true; m.userData.label = name } }) : null
+  root.add(g)
+  parts[name] = { obj: g, dir: new THREE.Vector3(...dir), dist }
+}
+
+// disco de fita VHB sob o berço
+{
+  const tape = new THREE.Mesh(new THREE.CylinderGeometry(27.5, 27.5, 1.1, 96), matTape)
+  proc('Fita 3M VHB 5952 Ø55', tape, [0, -0.85, 0], [0, -1, 0], 40)
+}
+// O-ring 40×2 no canal da espiga (z montado = 1.5 + 12 = 13.5)
+{
+  const oring = new THREE.Mesh(new THREE.TorusGeometry(21.3, 1.05, 20, 96), matRubber)
+  oring.rotation.x = Math.PI / 2
+  proc('O-ring NBR 40×2', oring, [0, 13.5, 0], [0, 1, 0], 26)
+}
+
+loadAll.then(() => {
+  // LIS3DH no poço do deck (filho da base): deck z=14 → local y=12.5 do grupo base
+  {
+    const lis = new THREE.Group()
+    const pcb = new THREE.Mesh(new THREE.BoxGeometry(17, 1.4, 15), matPCB)
+    pcb.position.y = 15.2
+    const mems = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.1, 3.2), matSteel)
+    mems.position.y = 16.4
+    lis.add(pcb, mems)
+    lis.traverse(m => { if (m.isMesh) { m.castShadow = true; m.userData.label = 'LIS3DH ±16 g — acoplado rígido à base' } })
+    parts['Base · rosca + O-ring + poço do LIS3DH'].obj.add(lis)
+  }
+  // célula + ESP na bandeja (filhos da bandeja): bandeja local y=0 é o fundo do disco
+  {
+    const kids = new THREE.Group()
+    const cell = new THREE.Mesh(new THREE.CylinderGeometry(12.2, 12.2, 3.1, 64), matCell)
+    cell.position.set(-5.5, 3.3, 0)
+    cell.traverse(m => { m.userData.label = 'CR2477 · lítio 3 V / 1000 mAh' })
+    const esp = new THREE.Mesh(new THREE.BoxGeometry(18, 1.2, 22.5), matPCBdark)
+    esp.position.set(11.5, 2.4, 0)
+    const shield = new THREE.Mesh(new THREE.BoxGeometry(10, 2, 12), matSteel)
+    shield.position.set(11.5, 4, -2)
+    esp.userData.label = shield.userData.label = 'ESP32-C3 SuperMini · Wi-Fi'
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 4.2, 11, 32), matSteel)
+    cap.rotation.x = Math.PI / 2
+    cap.position.set(-2, 3.7, 15)
+    cap.userData.label = 'Supercapacitor híbrido 3,8 V 5 F'
+    kids.add(cell, esp, shield, cap)
+    kids.traverse(m => { if (m.isMesh) m.castShadow = true })
+    parts['Bandeja · CR2477 + ESP32-C3'].obj.add(kids)
+  }
+})
+
+// ---------- interação ----------
+let explode = 0
+document.getElementById('explode').addEventListener('input', e => {
+  explode = e.target.value / 100
+  document.getElementById('hint').style.opacity = 0
+  for (const k in parts) {
+    const { obj, dir, dist } = parts[k]
+    const h = obj.userData.home
+    obj.position.set(h[0] + dir.x * dist * explode, h[1] + dir.y * dist * explode, h[2] + dir.z * dist * explode)
+  }
+})
+
+document.querySelectorAll('.chip').forEach(ch => ch.addEventListener('click', () => {
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('on'))
+  ch.classList.add('on')
+  const f = finishes[ch.dataset.c]
+  matShell.color.set(f.shell)
+  matShell.roughness = f.rough
+}))
+
+const rotBtn = document.getElementById('rot')
+rotBtn.addEventListener('click', () => {
+  controls.autoRotate = !controls.autoRotate
+  rotBtn.classList.toggle('on', controls.autoRotate)
+})
+document.getElementById('reset').addEventListener('click', () => {
+  camera.position.set(95, 70, 120)
+  controls.target.set(0, 18, 0)
+})
+
+const ray = new THREE.Raycaster()
+const mouse = new THREE.Vector2()
+const tip = document.getElementById('tooltip')
+stage.addEventListener('pointermove', e => {
+  const r = stage.getBoundingClientRect()
+  mouse.set((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1)
+  ray.setFromCamera(mouse, camera)
+  const hit = ray.intersectObjects(root.children, true).find(h => h.object.userData.label)
+  if (hit) {
+    tip.textContent = hit.object.userData.label
+    tip.style.left = (e.clientX - r.left) + 'px'
+    tip.style.top = (e.clientY - r.top) + 'px'
+    tip.style.opacity = 1
+  } else tip.style.opacity = 0
+})
+
+setTimeout(() => { document.getElementById('hint').style.opacity = 0 }, 9000)
+
+function resize () {
+  const w = stage.clientWidth, h = stage.clientHeight
+  renderer.setSize(w, h)
+  camera.aspect = w / h
+  camera.updateProjectionMatrix()
+}
+addEventListener('resize', resize)
+resize()
+
+renderer.setAnimationLoop(() => {
+  controls.update()
+  renderer.render(scene, camera)
+})
+
+// gancho de depuração/verificação (render manual + captura do canvas)
+window.__viewer = { scene, camera, renderer, controls, parts, root }
+</script>
+</body>
+</html>
