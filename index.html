@@ -329,12 +329,12 @@
 <section id="specs">
   <div class="kick">ESPECIFICAÇÕES</div>
   <h2>Uma moeda de lítio.<br>Um ano de vigília.</h2>
-  <p class="sub">ESP32-C3 SuperMini + acelerômetro LIS3DH num puck Ø54 mm impresso em ASA. Cola no motor com fita 3M VHB, dorme a 20 µA e só liga o rádio para entregar o que já processou. <b>R$ ~110 por ponto monitorado.</b></p>
+  <p class="sub">ESP32-C3 SuperMini + acelerômetro LIS3DH num puck Ø56 mm impresso em ASA. Cola no motor com fita 3M VHB, dorme a 20 µA e só liga o rádio para entregar o que já processou. <b>R$ ~110 por ponto monitorado.</b></p>
   <div class="grid">
     <div class="card"><div class="big">±16 g <small>· 3,2 kHz</small></div><div class="lbl"><b>LIS3DH</b> · 3 eixos, FIFO, 2 µA em standby · banda de análise 10–1600 Hz — cobre de desbalanceamento a rolamento</div></div>
     <div class="card"><div class="big">ESP32-C3</div><div class="lbl">SuperMini · RISC-V 160 MHz · <b>Wi-Fi 2,4 GHz</b> · FFT e features a bordo · deep sleep ~20 µA (LED removido)</div></div>
     <div class="card"><div class="big">CR2477</div><div class="lbl">Célula de lítio 3 V / 1000 mAh · <b>~12 meses</b> de operação · troca em 20 s pela tampa roscada, sem descolar a fita</div></div>
-    <div class="card"><div class="big">Ø54 × 30 <small>mm</small></div><div class="lbl">Puck em <b>ASA</b> com berço baioneta · 42 g · IP66 alvo (rosca + O-ring radial, receita da família Térmica)</div></div>
+    <div class="card"><div class="big">Ø56 × 32 <small>mm</small></div><div class="lbl">Puck em <b>ASA</b> com berço baioneta · ~50 g · IP66 alvo (rosca + O-ring radial, receita da família Térmica)</div></div>
     <div class="card"><div class="big">Wi-Fi + REST</div><div class="lbl">Acorda, entrega <b>JSON por HTTP</b> ao hub e volta a dormir · app e dashboard puxam da mesma API · zero gateway proprietário</div></div>
     <div class="card"><div class="big">96 <small>medições/dia</small></div><div class="lbl">Rajada de 0,64 s a cada 10 min + transmissão consolidada a cada 4 h · <b>memória local de 7 dias</b> se a rede cair</div></div>
   </div>
@@ -513,8 +513,8 @@
     <tr><td>—</td><td>Fio + verniz</td><td>Fio wrap AWG30 + verniz conformal acrílico</td><td>Interligação e proteção salina</td><td>—</td><td>R$ 8</td></tr>
     <tr><td>—</td><td>O-ring 40×2</td><td>NBR 70 Shore + graxa de silicone</td><td>Vedação radial corpo×base</td><td>1</td><td>R$ 3</td></tr>
     <tr><td>—</td><td>Sílica-gel</td><td>Sachê 1 g</td><td>Seca o ar interno selado</td><td>1</td><td>R$ 1</td></tr>
-    <tr><td>—</td><td>Fita 3M VHB 5952</td><td>Disco Ø55 (cortar de rolo 19 mm ou manta)</td><td>Colagem definitiva do berço no motor</td><td>1</td><td>R$ 12</td></tr>
-    <tr><td>—</td><td>Impressão ASA</td><td>corpo + base + bandeja + berço (~38 g) + epóxi de selagem</td><td>Case IP66 + acoplamento mecânico</td><td>4 pçs</td><td>R$ 14</td></tr>
+    <tr><td>—</td><td>Fita 3M VHB 5952</td><td>Disco Ø62 (cortar de manta ou 2 voltas de rolo 25 mm)</td><td>Colagem definitiva do berço no motor</td><td>1</td><td>R$ 12</td></tr>
+    <tr><td>—</td><td>Impressão ASA</td><td>corpo + base + bandeja + berço (~50 g) + epóxi de selagem</td><td>Case IP66 + acoplamento mecânico</td><td>4 pçs</td><td>R$ 14</td></tr>
     <tr><td>—</td><td>Parafusos inox A4 (opcional)</td><td>2× Ø3,5×16 auto-atarraxantes escareados</td><td>Alternativa parafusada ao VHB no berço</td><td>2</td><td>R$ 2</td></tr>
     <tr><td colspan="4">Total do protótipo nº 1 (sensor completo instalado)</td><td></td><td><em>R$ ~120</em></td></tr>
   </table></div>
@@ -569,9 +569,9 @@ $ curl hub.safeboat.local/api/v1/devices
   <h2>A fita fica no motor.<br>O sensor gira e trava.</h2>
   <p class="sub">O berço baioneta é colado uma única vez com <b>3M VHB 5952</b> — fita acrílica estrutural que aguenta óleo, calor de praça de máquinas e anos de vibração. O sensor encaixa no berço e trava com <b>30° de giro</b>: trocar bateria ou remanejar o ponto nunca mexe na colagem.</p>
   <div class="grid">
-    <div class="card"><div class="big">3M VHB 5952</div><div class="lbl">Disco Ø55 mm · adesão em metal pintado/alumínio · <b>desengraxar com isopropílico</b> e pressionar 15 s. Rigidez suficiente até ~1 kHz de banda útil.</div></div>
+    <div class="card"><div class="big">3M VHB 5952</div><div class="lbl">Disco Ø62 mm · adesão em metal pintado/alumínio · <b>desengraxar com isopropílico</b> e pressionar 15 s. Rigidez suficiente até ~1 kHz de banda útil.</div></div>
     <div class="card"><div class="big">30°</div><div class="lbl">Baioneta de 3 orelhas com batente e detente — <b>solta com a mão</b>, não solta com vibração. Furos escareados no berço p/ parafusar em vez de colar, se preferir.</div></div>
-    <div class="card"><div class="big">6 mm</div><div class="lbl">Distância do MEMS à superfície do motor. O LIS3DH é <b>rigidamente acoplado à base</b> — nada de sensor flutuando em bandeja.</div></div>
+    <div class="card"><div class="big">0 folgas</div><div class="lbl">O MEMS assenta no poço da <b>base maciça</b> — caminho 100 % sólido do pé do motor ao sensor, sem juntas nem bandeja flutuante no meio.</div></div>
     <div class="card"><div class="big">≤ 70 °C</div><div class="lbl">Temperatura contínua no ponto de fixação (limite da célula de lítio). Bloco de motor: fixar na <b>carcaça/pé</b>, nunca no coletor de escape.</div></div>
   </div>
   <div style="height:22px"></div>
@@ -595,7 +595,7 @@ $ curl hub.safeboat.local/api/v1/devices
     <tr><td>Camada</td><td>0,16 mm</td><td>Rosca Ø50×P2,5, canal de O-ring e baioneta saem limpos</td></tr>
     <tr><td>Perímetros</td><td>5 paredes · 40 % gyroid</td><td>Rigidez importa: case mole filtra a vibração que queremos medir</td></tr>
     <tr><td>Orientação</td><td>Corpo: topo na chapa · Base: flange na chapa · Bandeja e berço: face plana na chapa</td><td>Chapa PEI texturizada = acabamento fosco premium na face da marca</td></tr>
-    <tr><td>Suportes</td><td>Nenhum</td><td>Canal da baioneta tem ponte de 2,7 mm — imprime sem suporte</td></tr>
+    <tr><td>Suportes</td><td>Nenhum</td><td>Orelhas da baioneta nascem na mesa; canal do berço tem ponte de 2,3 mm — tudo imprime sem suporte</td></tr>
     <tr><td>Pós-processo</td><td>Epóxi interno no corpo · teste de mergulho 30 min</td><td>FDM selado com epóxi = estanque na prática (não certificado)</td></tr>
   </table></div>
 
@@ -665,10 +665,10 @@ $ curl hub.safeboat.local/api/v1/devices
   <h2>Arquivos do projeto.</h2>
   <p class="sub">STLs prontos para fatiar no Bambu Studio. Modelos gerados parametricamente — edite <code>tools/generate-stl.cjs</code> para ajustar qualquer cota. A rede de análise está em <code>public/engine.js</code>.</p>
   <div class="dl">
-    <a href="stl/corpo.stl" download><span class="n">corpo.stl</span><span class="d">Copo Ø54×26 · marca gravada</span></a>
+    <a href="stl/corpo.stl" download><span class="n">corpo.stl</span><span class="d">Copo Ø56×28 · marca gravada</span></a>
     <a href="stl/base.stl" download><span class="n">base.stl</span><span class="d">Rosca + O-ring + baioneta + poço LIS3DH</span></a>
     <a href="stl/bandeja.stl" download><span class="n">bandeja.stl</span><span class="d">Carrier CR2477 + ESP32-C3</span></a>
-    <a href="stl/berco.stl" download><span class="n">berco.stl</span><span class="d">Berço baioneta Ø60 · fita VHB</span></a>
+    <a href="stl/berco.stl" download><span class="n">berco.stl</span><span class="d">Berço baioneta Ø67 · fita VHB</span></a>
     <a href="engine.js" download><span class="n">engine.js</span><span class="d">Rede de análise de vibração (referência)</span></a>
   </div>
 </section>
@@ -847,7 +847,7 @@ const matTape = new THREE.MeshStandardMaterial({ color: 0x8a8d93, roughness: 0.8
 // ---------- montagem ----------
 // Coordenadas montadas do projeto: z=0 fundo da base, +z p/ cima.
 // STLs: rotX(-90°) leva +z (modelo) → +y (mundo).
-// Alturas: berço piso z=1.5; base assenta no piso (fundo z=1.5); corpo boca z=5.5; bandeja z=20.5.
+// Alturas: berço piso z=2; base assenta no piso (fundo z=2); corpo boca z=6; bandeja z=23,5.
 const root = new THREE.Group()
 scene.add(root)
 const parts = {}
@@ -875,9 +875,9 @@ function addSTL (url, mat, { pos = [0, 0, 0], rot = [-Math.PI / 2, 0, 0], name, 
 
 const loadAll = Promise.all([
   addSTL('stl/berco.stl', matShell, { name: 'Berço baioneta (fica no motor)', pos: [0, 0, 0], dir: [0, -1, 0], dist: 26 }),
-  addSTL('stl/base.stl', matShell, { name: 'Base · rosca + O-ring + poço do LIS3DH', pos: [0, 1.5, 0], dir: [0, 1, 0], dist: 14 }),
-  addSTL('stl/bandeja.stl', matDark, { name: 'Bandeja · CR2477 + ESP32-C3', pos: [0, 20.5, 0], dir: [0, 1, 0], dist: 42 }),
-  addSTL('stl/corpo.stl', matShell, { name: 'Corpo roscado · marca SAFEBOAT', pos: [0, 5.5, 0], dir: [0, 1, 0], dist: 78 }),
+  addSTL('stl/base.stl', matShell, { name: 'Base · rosca + O-ring + poço do LIS3DH', pos: [0, 2, 0], dir: [0, 1, 0], dist: 14 }),
+  addSTL('stl/bandeja.stl', matDark, { name: 'Bandeja · CR2477 + ESP32-C3', pos: [0, 23.5, 0], dir: [0, 1, 0], dist: 42 }),
+  addSTL('stl/corpo.stl', matShell, { name: 'Corpo roscado · marca SAFEBOAT', pos: [0, 6, 0], dir: [0, 1, 0], dist: 78 }),
 ])
 
 function proc (name, mesh, pos, dir, dist) {
@@ -892,14 +892,14 @@ function proc (name, mesh, pos, dir, dist) {
 
 // disco de fita VHB sob o berço
 {
-  const tape = new THREE.Mesh(new THREE.CylinderGeometry(27.5, 27.5, 1.1, 96), matTape)
-  proc('Fita 3M VHB 5952 Ø55', tape, [0, -0.85, 0], [0, -1, 0], 40)
+  const tape = new THREE.Mesh(new THREE.CylinderGeometry(31, 31, 1.1, 96), matTape)
+  proc('Fita 3M VHB 5952 Ø62', tape, [0, -0.85, 0], [0, -1, 0], 40)
 }
-// O-ring 40×2 no canal da espiga (z montado = 1.5 + 12 = 13.5)
+// O-ring 40×2 no canal da espiga (z montado = 2 + 14,8 = 16,8)
 {
   const oring = new THREE.Mesh(new THREE.TorusGeometry(21.3, 1.05, 20, 96), matRubber)
   oring.rotation.x = Math.PI / 2
-  proc('O-ring NBR 40×2', oring, [0, 13.5, 0], [0, 1, 0], 26)
+  proc('O-ring NBR 40×2', oring, [0, 16.8, 0], [0, 1, 0], 26)
 }
 
 loadAll.then(() => {
@@ -907,9 +907,9 @@ loadAll.then(() => {
   {
     const lis = new THREE.Group()
     const pcb = new THREE.Mesh(new THREE.BoxGeometry(17, 1.4, 15), matPCB)
-    pcb.position.y = 15.2
+    pcb.position.y = 18.2
     const mems = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.1, 3.2), matSteel)
-    mems.position.y = 16.4
+    mems.position.y = 19.4
     lis.add(pcb, mems)
     lis.traverse(m => { if (m.isMesh) { m.castShadow = true; m.userData.label = 'LIS3DH ±16 g — acoplado rígido à base' } })
     parts['Base · rosca + O-ring + poço do LIS3DH'].obj.add(lis)
@@ -918,16 +918,16 @@ loadAll.then(() => {
   {
     const kids = new THREE.Group()
     const cell = new THREE.Mesh(new THREE.CylinderGeometry(12.2, 12.2, 3.1, 64), matCell)
-    cell.position.set(-5.5, 3.3, 0)
+    cell.position.set(-5.5, 3.7, 0)
     cell.traverse(m => { m.userData.label = 'CR2477 · lítio 3 V / 1000 mAh' })
     const esp = new THREE.Mesh(new THREE.BoxGeometry(18, 1.2, 22.5), matPCBdark)
-    esp.position.set(11.5, 2.4, 0)
+    esp.position.set(11.5, 2.8, 0)
     const shield = new THREE.Mesh(new THREE.BoxGeometry(10, 2, 12), matSteel)
-    shield.position.set(11.5, 4, -2)
+    shield.position.set(11.5, 4.4, -2)
     esp.userData.label = shield.userData.label = 'ESP32-C3 SuperMini · Wi-Fi'
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 4.2, 11, 32), matSteel)
     cap.rotation.x = Math.PI / 2
-    cap.position.set(-2, 3.7, 15)
+    cap.position.set(-2, 4.1, 15)
     cap.userData.label = 'Supercapacitor híbrido 3,8 V 5 F'
     kids.add(cell, esp, shield, cap)
     kids.traverse(m => { if (m.isMesh) m.castShadow = true })
