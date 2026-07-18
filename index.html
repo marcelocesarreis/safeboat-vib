@@ -329,12 +329,12 @@
 <section id="specs">
   <div class="kick">ESPECIFICAÇÕES</div>
   <h2>Uma moeda de lítio.<br>Um ano de vigília.</h2>
-  <p class="sub">ESP32-C3 SuperMini + acelerômetro LIS3DH num puck Ø56 mm impresso em ASA. Cola no motor com fita 3M VHB, dorme a 20 µA e só liga o rádio para entregar o que já processou. <b>R$ ~110 por ponto monitorado.</b></p>
+  <p class="sub">ESP32-C3 SuperMini + acelerômetro LIS3DH num puck Ø64 mm impresso em ASA. Cola no motor com fita 3M VHB, dorme a 20 µA e só liga o rádio para entregar o que já processou. <b>R$ ~110 por ponto monitorado.</b></p>
   <div class="grid">
     <div class="card"><div class="big">±16 g <small>· 3,2 kHz</small></div><div class="lbl"><b>LIS3DH</b> · 3 eixos, FIFO, 2 µA em standby · banda de análise 10–1600 Hz — cobre de desbalanceamento a rolamento</div></div>
     <div class="card"><div class="big">ESP32-C3</div><div class="lbl">SuperMini · RISC-V 160 MHz · <b>Wi-Fi 2,4 GHz</b> · FFT e features a bordo · deep sleep ~20 µA (LED removido)</div></div>
     <div class="card"><div class="big">CR2477</div><div class="lbl">Célula de lítio 3 V / 1000 mAh · <b>~12 meses</b> de operação · troca em 20 s pela tampa roscada, sem descolar a fita</div></div>
-    <div class="card"><div class="big">Ø56 × 32 <small>mm</small></div><div class="lbl">Puck em <b>ASA</b> com berço baioneta · ~50 g · IP66 alvo (rosca + O-ring radial, receita da família Térmica)</div></div>
+    <div class="card"><div class="big">Ø64 × 36 <small>mm</small></div><div class="lbl">Puck em <b>ASA</b> com berço baioneta · ~65 g · IP66 alvo (rosca + O-ring radial, receita da família Térmica)</div></div>
     <div class="card"><div class="big">Wi-Fi + REST</div><div class="lbl">Acorda, entrega <b>JSON por HTTP</b> ao hub e volta a dormir · app e dashboard puxam da mesma API · zero gateway proprietário</div></div>
     <div class="card"><div class="big">96 <small>medições/dia</small></div><div class="lbl">Rajada de 0,64 s a cada 10 min + transmissão consolidada a cada 4 h · <b>memória local de 7 dias</b> se a rede cair</div></div>
   </div>
@@ -344,23 +344,23 @@
 <section id="energia">
   <div class="kick">ARQUITETURA DE ENERGIA</div>
   <h2>A moeda fornece a média.<br>O supercapacitor, o pico.</h2>
-  <p class="sub">Uma CR2477 entrega microamperes com 1000 mAh de fôlego — mas o rádio Wi-Fi pede rajadas de centenas de miliamperes. A solução clássica de eletrônica de baixa potência: separar <b>energia</b> de <b>potência</b>. A célula carrega um supercapacitor híbrido a conta-gotas (≤ 4 mA); o rádio só liga quando a reserva está cheia.</p>
+  <p class="sub">Uma CR2477 entrega microamperes com 1000 mAh de fôlego — mas o rádio Wi-Fi pede rajadas de centenas de miliamperes. A solução clássica de eletrônica de baixa potência: separar <b>energia</b> de <b>potência</b>. A célula carrega um banco de <b>2 supercapacitores EDLC em série</b> a conta-gotas (≤ 4 mA); o rádio só liga quando a reserva está cheia.</p>
   <div class="tableCard"><table>
     <tr><th>Estado</th><th>Corrente</th><th>Duração / cadência</th><th>Orçamento diário</th></tr>
     <tr><td>Deep sleep</td><td>~20 µA (SuperMini com LED removido) + 2 µA LIS3DH</td><td>~99,7 % do tempo</td><td>0,53 mAh</td></tr>
     <tr><td>Medição</td><td>~25 mA (CPU + I²C lendo o FIFO)</td><td>0,9 s × 96/dia</td><td>0,60 mAh</td></tr>
     <tr><td>Transmissão Wi-Fi</td><td>pico 300 mA — <em>vem do supercapacitor</em></td><td>~2,5 s × 6/dia</td><td>0,52 mAh</td></tr>
-    <tr><td>Recarga do supercap</td><td>limitada a 4 mA (dentro do pulso seguro da célula)</td><td>~3 min antes de cada TX</td><td>—</td></tr>
+    <tr><td>Recarga do banco EDLC</td><td>limitada a 4 mA (dentro do pulso seguro da célula)</td><td>~20 min após cada rajada — folga enorme na janela de 4 h</td><td>—</td></tr>
     <tr><td>Total</td><td colspan="2">≈ 1,7 mAh/dia → CR2477 1000 mAh com 30 % de margem</td><td><em>~12 meses</em></td></tr>
   </table></div>
-  <div class="note"><b>Regra de ouro do projeto:</b> o rádio nunca liga direto na célula. Um limitador de corrente de 2 componentes (R1 680 Ω + Schottky, veja o <a href="#eletrica">projeto elétrico</a>) carrega o supercapacitor híbrido de 3,8 V / 5 F; o ESP32-C3 monitora a tensão da reserva pelo ADC e só inicia a conexão Wi-Fi com energia garantida para a rajada inteira. Se a rede estiver fora do ar, as medições ficam na flash (7 dias) e seguem na próxima janela — <b>nenhum dado se perde, nenhuma rajada mata a bateria</b>.</div>
+  <div class="note"><b>Regra de ouro do projeto:</b> o rádio nunca liga direto na célula. Um limitador de corrente de 2 componentes (R1 680 Ω + Schottky, veja o <a href="#eletrica">projeto elétrico</a>) carrega o banco de 2 EDLCs de 3,3 F / 2,7 V em série (1,65 F efetivos, ESR &lt; 0,5 Ω — ~2 J utilizáveis, quase 3 rajadas por carga); o ESP32-C3 monitora a tensão da reserva pelo ADC e só inicia a conexão Wi-Fi com energia garantida para a rajada inteira. Se a rede estiver fora do ar, as medições ficam na flash (7 dias) e seguem na próxima janela — <b>nenhum dado se perde, nenhuma rajada mata a bateria</b>.</div>
 </section>
 
 <!-- ============================================================ elétrica -->
 <section id="eletrica">
   <div class="kick">PROJETO ELÉTRICO</div>
   <h2>Nenhum fio atravessa a case.</h2>
-  <p class="sub">Energia da moeda, dados pelo rádio: o VIB não tem prensa-cabo, conector externo nem furo — <b>IP66 por construção</b>. Todo o circuito cabe em 14 componentes, sem PCB customizada na v1: os módulos se interligam com fio wrap AWG30 e verniz conformal.</p>
+  <p class="sub">Energia da moeda, dados pelo rádio: o VIB não tem prensa-cabo, conector externo nem furo — <b>IP66 por construção</b>. Todo o circuito cabe em 17 componentes, sem PCB customizada na v1: os módulos se interligam com fio wrap AWG30 e verniz conformal. A disposição interna foi auditada com as dimensões reais de cada componente — tabela dos níveis logo abaixo.</p>
   <div class="schWrap">
     <svg viewBox="0 0 980 520" xmlns="http://www.w3.org/2000/svg" font-family="'Source Sans 3',-apple-system,'Segoe UI',Roboto,sans-serif">
       <!-- limite da case -->
@@ -406,8 +406,9 @@
       <line x1="400" y1="280" x2="440" y2="280" stroke="#23304A" stroke-width="3"/>
       <path d="M400 292 q 20 10 40 0" fill="none" stroke="#23304A" stroke-width="3"/>
       <line x1="420" y1="294" x2="420" y2="430" stroke="#5b6270" stroke-width="2.5"/>
-      <text x="432" y="252" fill="#23304A" font-size="10.5" font-weight="700" text-anchor="start">C1 · LIC 3,8 V / 5 F</text>
-      <text x="432" y="266" fill="#6b7385" font-size="9.5" text-anchor="start">reserva da rajada Wi-Fi</text>
+      <text x="432" y="240" fill="#23304A" font-size="10.5" font-weight="700" text-anchor="start">C1 · 2× EDLC 3,3 F/2,7 V série</text>
+      <text x="432" y="254" fill="#6b7385" font-size="9.5" text-anchor="start">1,65 F ef. · reserva da rajada Wi-Fi</text>
+      <text x="432" y="268" fill="#6b7385" font-size="9.5" text-anchor="start">R5/R6 1 MΩ de balanceamento</text>
       <!-- C3/C4 desacoplamento -->
       <line x1="545" y1="210" x2="545" y2="256" stroke="#c2410c" stroke-width="2"/>
       <line x1="533" y1="256" x2="557" y2="256" stroke="#23304A" stroke-width="2.5"/>
@@ -494,6 +495,20 @@
   <div class="note warn"><b>Firmware — brownout em 2,55 V:</b> o trilho afunda durante a rajada Wi-Fi (ESR do supercap); com o detector padrão em 2,7 V o rádio reiniciaria no meio da transmissão. Ajustar <code>CONFIG_ESP_BROWNOUT_DET_LVL</code> e validar a rajada inteira no osciloscópio antes de fechar a case.</div>
 
   <div style="height:44px"></div>
+  <div class="kick">GEOMETRIA INTERNA · AUDITORIA DE ENCAIXE</div>
+  <h2 style="font-size:clamp(22px,3vw,30px)">Cada milímetro conferido.</h2>
+  <p class="sub">Pilha vertical com as dimensões <b>reais</b> dos componentes (a CR2477 tem 7,7 mm de altura — é ela que dita o furo Ø54). Alturas medidas do fundo da base; teto interno em z=33.</p>
+  <div class="tableCard"><table>
+    <tr><th>Nível (z)</th><th>Elemento</th><th>Verificação</th></tr>
+    <tr><td>11,3 – 19,0</td><td>CR2477 (Ø24,5×7,7) no poço da base maciça, em −X</td><td>Poço Ø25,4 · parede até o canal do O-ring: 1,0 mm · espuma EVA 4 mm por cima, prensada pela bandeja</td></tr>
+    <tr><td>17,0 – 20,0</td><td>Módulo LIS3DH na moldura do deck, em +X</td><td>Moldura 100 % dentro do deck Ø53 · caminho sólido até o motor · não conflita com o poço (folga 1,8 mm)</td></tr>
+    <tr><td>21,5 – 23,5</td><td>Bandeja Ø51 sobre 3 postes (90°/225°/315°)</td><td>Postes fora do poço, da moldura e do banco EDLC</td></tr>
+    <tr><td>23,5 – 27,8</td><td>ESP32-C3 centrado (cantos em r=14,4)</td><td>Folga radial 11 mm ao furo · <em>antena para +Y: janela sem metal</em> (célula em −X, EDLCs em −Y)</td></tr>
+    <tr><td>23,5 – 31,3</td><td>2× EDLC Ø8×11,5 deitados topo a topo, em −Y</td><td>Berço entre nervuras · folga 1,7 mm ao teto</td></tr>
+    <tr><td>33 / 36</td><td>Teto interno · topo externo do corpo</td><td>Sensor Ø64 × 36 mm — mais baixo = ressonância de fixação mais alta na fita VHB</td></tr>
+  </table></div>
+
+  <div style="height:44px"></div>
   <div class="kick">PROTÓTIPO Nº 1 · LISTA COMPLETA</div>
   <h2 style="font-size:clamp(22px,3vw,30px)">Tudo que vai na bancada.</h2>
   <p class="sub">Compra única para montar o primeiro sensor completo — eletrônica, vedação, fixação e impressão. Referências de exemplo; qualquer equivalente serve.</p>
@@ -502,7 +517,8 @@
     <tr><td>U1</td><td>ESP32-C3 SuperMini</td><td>Wi-Fi 2,4 GHz, USB-C, RISC-V 160 MHz</td><td>Cérebro: FFT, features, rádio</td><td>1</td><td>R$ 25</td></tr>
     <tr><td>U2</td><td>Módulo LIS3DH</td><td>Breakout I²C 3V3 (ex. GY-LIS3DH / Adafruit 2809)</td><td>Acelerômetro ±16 g, 3,2 kHz</td><td>1</td><td>R$ 14</td></tr>
     <tr><td>BT1</td><td>Célula CR2477</td><td>3 V / 1000 mAh, <em>com abas soldadas</em> (não usar suporte de pressão: vibração)</td><td>Energia média por ~12 meses</td><td>1</td><td>R$ 18</td></tr>
-    <tr><td>C1</td><td>Supercapacitor híbrido (LIC)</td><td>3,8 V / 5 F, Ø10×20 (ex. Vinatech VEL) — ou 2× EDLC 10 F 2,7 V em série</td><td>Reserva de pico da rajada Wi-Fi</td><td>1</td><td>R$ 15</td></tr>
+    <tr><td>C1</td><td>Banco de rajada (EDLC)</td><td>2× EDLC 2,7 V / 3,3 F Ø8×11,5 em série (1,65 F ef., ESR &lt; 0,5 Ω) — deitados no berço da bandeja</td><td>Reserva de pico da rajada Wi-Fi</td><td>2</td><td>R$ 10</td></tr>
+    <tr><td>R5, R6</td><td>Resistores 1 MΩ</td><td>1/4 W 1%, um em paralelo com cada EDLC</td><td>Balanceamento da tensão do banco em série</td><td>2</td><td>R$ 0,20</td></tr>
     <tr><td>R1</td><td>Resistor 680 Ω</td><td>1/4 W 1%</td><td>Limita a recarga do supercap a ≤4 mA</td><td>1</td><td>R$ 0,10</td></tr>
     <tr><td>D1</td><td>Diodo Schottky</td><td>BAT60A (queda ~0,15 V) ou BAT85</td><td>Impede o supercap de descarregar na célula</td><td>1</td><td>R$ 0,50</td></tr>
     <tr><td>R2, R3</td><td>Resistores 1 MΩ</td><td>1/4 W 1%</td><td>Divisor de leitura de Vcap (GPIO0/ADC)</td><td>2</td><td>R$ 0,20</td></tr>
@@ -511,10 +527,11 @@
     <tr><td>S1</td><td>Reed switch + ímã</td><td>Reed NA 2×14 mm + ímã neodímio Ø5×3</td><td>Modo comissionamento (AP) sem abrir a case</td><td>1+1</td><td>R$ 4</td></tr>
     <tr><td>LED1, R4</td><td>LED 3 mm + resistor 1 kΩ</td><td>Verde alto brilho</td><td>Status na bancada (remover depois: −25 µA)</td><td>1+1</td><td>R$ 0,50</td></tr>
     <tr><td>—</td><td>Fio + verniz</td><td>Fio wrap AWG30 + verniz conformal acrílico</td><td>Interligação e proteção salina</td><td>—</td><td>R$ 8</td></tr>
-    <tr><td>—</td><td>O-ring 40×2</td><td>NBR 70 Shore + graxa de silicone</td><td>Vedação radial corpo×base</td><td>1</td><td>R$ 3</td></tr>
+    <tr><td>—</td><td>O-ring 48×2</td><td>NBR 70 Shore + graxa de silicone</td><td>Vedação radial corpo×base (sela no furo liso)</td><td>1</td><td>R$ 3</td></tr>
+    <tr><td>—</td><td>Espuma EVA 4 mm</td><td>Disco Ø25 (cortar de manta)</td><td>Prensa a célula no poço — retenção antivibração</td><td>1</td><td>R$ 1</td></tr>
     <tr><td>—</td><td>Sílica-gel</td><td>Sachê 1 g</td><td>Seca o ar interno selado</td><td>1</td><td>R$ 1</td></tr>
-    <tr><td>—</td><td>Fita 3M VHB 5952</td><td>Disco Ø62 (cortar de manta ou 2 voltas de rolo 25 mm)</td><td>Colagem definitiva do berço no motor</td><td>1</td><td>R$ 12</td></tr>
-    <tr><td>—</td><td>Impressão ASA</td><td>corpo + base + bandeja + berço (~50 g) + epóxi de selagem</td><td>Case IP66 + acoplamento mecânico</td><td>4 pçs</td><td>R$ 14</td></tr>
+    <tr><td>—</td><td>Fita 3M VHB 5952</td><td>Disco Ø70 (cortar de manta ou 3 voltas de rolo 25 mm)</td><td>Colagem definitiva do berço no motor</td><td>1</td><td>R$ 12</td></tr>
+    <tr><td>—</td><td>Impressão ASA</td><td>corpo + base + bandeja + berço (~65 g) + epóxi de selagem</td><td>Case IP66 + acoplamento mecânico</td><td>4 pçs</td><td>R$ 14</td></tr>
     <tr><td>—</td><td>Parafusos inox A4 (opcional)</td><td>2× Ø3,5×16 auto-atarraxantes escareados</td><td>Alternativa parafusada ao VHB no berço</td><td>2</td><td>R$ 2</td></tr>
     <tr><td colspan="4">Total do protótipo nº 1 (sensor completo instalado)</td><td></td><td><em>R$ ~120</em></td></tr>
   </table></div>
@@ -569,7 +586,7 @@ $ curl hub.safeboat.local/api/v1/devices
   <h2>A fita fica no motor.<br>O sensor gira e trava.</h2>
   <p class="sub">O berço baioneta é colado uma única vez com <b>3M VHB 5952</b> — fita acrílica estrutural que aguenta óleo, calor de praça de máquinas e anos de vibração. O sensor encaixa no berço e trava com <b>30° de giro</b>: trocar bateria ou remanejar o ponto nunca mexe na colagem.</p>
   <div class="grid">
-    <div class="card"><div class="big">3M VHB 5952</div><div class="lbl">Disco Ø62 mm · adesão em metal pintado/alumínio · <b>desengraxar com isopropílico</b> e pressionar 15 s. Rigidez suficiente até ~1 kHz de banda útil.</div></div>
+    <div class="card"><div class="big">3M VHB 5952</div><div class="lbl">Disco Ø70 mm · adesão em metal pintado/alumínio · <b>desengraxar com isopropílico</b> e pressionar 15 s. Rigidez suficiente até ~1 kHz de banda útil.</div></div>
     <div class="card"><div class="big">30°</div><div class="lbl">Baioneta de 3 orelhas com batente e detente — <b>solta com a mão</b>, não solta com vibração. Furos escareados no berço p/ parafusar em vez de colar, se preferir.</div></div>
     <div class="card"><div class="big">0 folgas</div><div class="lbl">O MEMS assenta no poço da <b>base maciça</b> — caminho 100 % sólido do pé do motor ao sensor, sem juntas nem bandeja flutuante no meio.</div></div>
     <div class="card"><div class="big">≤ 70 °C</div><div class="lbl">Temperatura contínua no ponto de fixação (limite da célula de lítio). Bloco de motor: fixar na <b>carcaça/pé</b>, nunca no coletor de escape.</div></div>
@@ -592,7 +609,7 @@ $ curl hub.safeboat.local/api/v1/devices
   <div class="tableCard"><table>
     <tr><th>Parâmetro</th><th>Valor</th><th>Observação</th></tr>
     <tr><td>Material</td><td>Bambu ASA (ou PETG-HF)</td><td>ASA: UV + 100 °C ambiente — obrigatório perto de motor</td></tr>
-    <tr><td>Camada</td><td>0,16 mm</td><td>Rosca Ø50×P2,5, canal de O-ring e baioneta saem limpos</td></tr>
+    <tr><td>Camada</td><td>0,16 mm</td><td>Rosca Ø58×P2,5, canal de O-ring e baioneta saem limpos</td></tr>
     <tr><td>Perímetros</td><td>5 paredes · 40 % gyroid</td><td>Rigidez importa: case mole filtra a vibração que queremos medir</td></tr>
     <tr><td>Orientação</td><td>Corpo: topo na chapa · Base: flange na chapa · Bandeja e berço: face plana na chapa</td><td>Chapa PEI texturizada = acabamento fosco premium na face da marca</td></tr>
     <tr><td>Suportes</td><td>Nenhum</td><td>Orelhas da baioneta nascem na mesa; canal do berço tem ponte de 2,3 mm — tudo imprime sem suporte</td></tr>
@@ -605,11 +622,11 @@ $ curl hub.safeboat.local/api/v1/devices
   <div style="height:14px"></div>
   <ol class="steps">
     <li><b>Sele o interior</b> do corpo com uma demão fina de epóxi e cure por 24 h.</li>
-    <li><b>Encaixe o LIS3DH</b> no poço central do deck da base — módulo prensado na moldura, com um ponto de epóxi nos cantos. É o único componente que exige rigidez.</li>
-    <li><b>Monte a bandeja:</b> CR2477 com abas soldadas no poço (abas pelas janelas laterais), ESP32-C3 entre as nervuras com fita VHB, supercapacitor deitado ao lado.</li>
-    <li><b>Ligue a elétrica</b> conforme o <a href="#eletrica">diagrama</a>: BT1 → R1 680 Ω → D1 Schottky → C1 supercap → pino 3V3; LIS3DH no I²C (GPIO8/9) com INT1 no GPIO3; reed S1 no GPIO1; divisor R2/R3 no GPIO0. Verniz conformal em tudo.</li>
+    <li><b>Encaixe o LIS3DH</b> na moldura do deck (lado +X) — módulo prensado, com um ponto de epóxi nos cantos. É o único componente que exige rigidez.</li>
+    <li><b>Monte a bandeja:</b> ESP32-C3 centrado entre as nervuras com fita VHB (<b>antena para +Y</b> — a janela sem metal), os 2 EDLCs deitados topo a topo no berço em −Y, com um filete de adesivo e R5/R6 soldados neles.</li>
+    <li><b>Ligue a elétrica</b> conforme o <a href="#eletrica">diagrama</a>: BT1 → R1 680 Ω → D1 Schottky → banco C1 → pino 3V3; LIS3DH no I²C (GPIO8/9) com INT1 no GPIO3; reed S1 no GPIO1; divisor R2/R3 no GPIO0. Verniz conformal em tudo.</li>
     <li><b>Grave o firmware</b> via USB-C, configure SSID/hub no AP de comissionamento e confirme o primeiro POST no hub.</li>
-    <li><b>Assente a bandeja</b> nas espigas dos 3 postes e rosqueie o corpo com o O-ring 40×2 engraxado no canal da base.</li>
+    <li><b>Deite a CR2477 no poço</b> da base (abas soldadas para cima, fios até a bandeja), cubra com o disco de <b>espuma EVA 4 mm</b>, assente a bandeja nas espigas dos 3 postes — a espuma fica prensada segurando a célula — e rosqueie o corpo com o O-ring 48×2 engraxado no canal da base.</li>
     <li><b>Cole o berço:</b> desengraxe o ponto do motor com isopropílico, aplique o disco de VHB 5952 no berço, posicione e pressione por 15 s. Espere 1 h antes de carregar.</li>
     <li><b>Trave o sensor</b> no berço (30° até o clique) e confira o ponto no dashboard. O baseline por regime se constrói sozinho na primeira semana de operação.</li>
   </ol>
@@ -665,10 +682,10 @@ $ curl hub.safeboat.local/api/v1/devices
   <h2>Arquivos do projeto.</h2>
   <p class="sub">STLs prontos para fatiar no Bambu Studio. Modelos gerados parametricamente — edite <code>tools/generate-stl.cjs</code> para ajustar qualquer cota. A rede de análise está em <code>public/engine.js</code>.</p>
   <div class="dl">
-    <a href="stl/corpo.stl" download><span class="n">corpo.stl</span><span class="d">Copo Ø56×28 · marca gravada</span></a>
-    <a href="stl/base.stl" download><span class="n">base.stl</span><span class="d">Rosca + O-ring + baioneta + poço LIS3DH</span></a>
-    <a href="stl/bandeja.stl" download><span class="n">bandeja.stl</span><span class="d">Carrier CR2477 + ESP32-C3</span></a>
-    <a href="stl/berco.stl" download><span class="n">berco.stl</span><span class="d">Berço baioneta Ø67 · fita VHB</span></a>
+    <a href="stl/corpo.stl" download><span class="n">corpo.stl</span><span class="d">Copo Ø64×32 · marca gravada</span></a>
+    <a href="stl/base.stl" download><span class="n">base.stl</span><span class="d">O-ring + baioneta + poços LIS3DH/CR2477</span></a>
+    <a href="stl/bandeja.stl" download><span class="n">bandeja.stl</span><span class="d">Carrier ESP32-C3 + banco EDLC</span></a>
+    <a href="stl/berco.stl" download><span class="n">berco.stl</span><span class="d">Berço baioneta Ø75 · fita VHB</span></a>
     <a href="engine.js" download><span class="n">engine.js</span><span class="d">Rede de análise de vibração (referência)</span></a>
   </div>
 </section>
@@ -875,8 +892,8 @@ function addSTL (url, mat, { pos = [0, 0, 0], rot = [-Math.PI / 2, 0, 0], name, 
 
 const loadAll = Promise.all([
   addSTL('stl/berco.stl', matShell, { name: 'Berço baioneta (fica no motor)', pos: [0, 0, 0], dir: [0, -1, 0], dist: 26 }),
-  addSTL('stl/base.stl', matShell, { name: 'Base · rosca + O-ring + poço do LIS3DH', pos: [0, 3, 0], dir: [0, 1, 0], dist: 14 }),
-  addSTL('stl/bandeja.stl', matDark, { name: 'Bandeja · CR2477 + ESP32-C3', pos: [0, 24.5, 0], dir: [0, 1, 0], dist: 42 }),
+  addSTL('stl/base.stl', matShell, { name: 'Base · O-ring + poços LIS3DH e CR2477', pos: [0, 3, 0], dir: [0, 1, 0], dist: 14 }),
+  addSTL('stl/bandeja.stl', matDark, { name: 'Bandeja · ESP32-C3 + EDLCs', pos: [0, 24.5, 0], dir: [0, 1, 0], dist: 42 }),
   addSTL('stl/corpo.stl', matShell, { name: 'Corpo roscado · marca SAFEBOAT', pos: [0, 7, 0], dir: [0, 1, 0], dist: 78 }),
 ])
 
@@ -892,46 +909,52 @@ function proc (name, mesh, pos, dir, dist) {
 
 // disco de fita VHB sob o berço
 {
-  const tape = new THREE.Mesh(new THREE.CylinderGeometry(31, 31, 1.1, 96), matTape)
-  proc('Fita 3M VHB 5952 Ø62', tape, [0, -0.85, 0], [0, -1, 0], 40)
+  const tape = new THREE.Mesh(new THREE.CylinderGeometry(35, 35, 1.1, 96), matTape)
+  proc('Fita 3M VHB 5952 Ø70', tape, [0, -0.85, 0], [0, -1, 0], 40)
 }
-// O-ring 40×2 no canal da espiga (z montado = 3 + 14,8 = 17,8)
+// O-ring 48×2 no canal da espiga (z montado = 3 + 14,8 = 17,8)
 {
-  const oring = new THREE.Mesh(new THREE.TorusGeometry(21.3, 1.05, 20, 96), matRubber)
+  const oring = new THREE.Mesh(new THREE.TorusGeometry(26.3, 1.05, 20, 96), matRubber)
   oring.rotation.x = Math.PI / 2
-  proc('O-ring NBR 40×2', oring, [0, 17.8, 0], [0, 1, 0], 26)
+  proc('O-ring NBR 48×2', oring, [0, 17.8, 0], [0, 1, 0], 26)
 }
 
 loadAll.then(() => {
-  // LIS3DH no poço do deck (filho da base): deck z=14 → local y=12.5 do grupo base
+  // eletrônica do deck (filhos da base): LIS3DH na moldura (x=+13,2) e
+  // CR2477 deitada no poço da base maciça (x=−11,6, z 11,3–19)
   {
     const lis = new THREE.Group()
     const pcb = new THREE.Mesh(new THREE.BoxGeometry(17, 1.4, 15), matPCB)
-    pcb.position.y = 18.2
+    pcb.position.set(13.2, 18.2, 0)
     const mems = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.1, 3.2), matSteel)
-    mems.position.y = 19.4
+    mems.position.set(13.2, 19.4, 0)
     lis.add(pcb, mems)
     lis.traverse(m => { if (m.isMesh) { m.castShadow = true; m.userData.label = 'LIS3DH ±16 g — acoplado rígido à base' } })
-    parts['Base · rosca + O-ring + poço do LIS3DH'].obj.add(lis)
+    const cell = new THREE.Mesh(new THREE.CylinderGeometry(12.25, 12.25, 7.7, 64), matCell)
+    cell.position.set(-11.6, 15.15, 0)
+    cell.castShadow = true
+    cell.userData.label = 'CR2477 no poço da base · espuma EVA por cima'
+    parts['Base · O-ring + poços LIS3DH e CR2477'].obj.add(lis, cell)
   }
-  // célula + ESP na bandeja (filhos da bandeja): bandeja local y=0 é o fundo do disco
+  // ESP centrado + banco de EDLCs na bandeja (filhos da bandeja)
   {
     const kids = new THREE.Group()
-    const cell = new THREE.Mesh(new THREE.CylinderGeometry(12.2, 12.2, 3.1, 64), matCell)
-    cell.position.set(-5.5, 3.7, 0)
-    cell.traverse(m => { m.userData.label = 'CR2477 · lítio 3 V / 1000 mAh' })
     const esp = new THREE.Mesh(new THREE.BoxGeometry(18, 1.2, 22.5), matPCBdark)
-    esp.position.set(11.5, 2.8, 0)
+    esp.position.set(0, 2.8, 0)
     const shield = new THREE.Mesh(new THREE.BoxGeometry(10, 2, 12), matSteel)
-    shield.position.set(11.5, 4.4, -2)
-    esp.userData.label = shield.userData.label = 'ESP32-C3 SuperMini · Wi-Fi'
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 4.2, 11, 32), matSteel)
-    cap.rotation.x = Math.PI / 2
-    cap.position.set(-2, 4.1, 15)
-    cap.userData.label = 'Supercapacitor híbrido 3,8 V 5 F'
-    kids.add(cell, esp, shield, cap)
+    shield.position.set(0, 4.4, 2)
+    esp.userData.label = shield.userData.label = 'ESP32-C3 SuperMini · antena para a janela livre'
+    kids.add(esp, shield)
+    // 2× EDLC Ø8×11,5 deitados topo a topo no berço em −Y (mundo +Z)
+    for (const s of [1, -1]) {
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 11.5, 32), matSteel)
+      cap.rotation.z = Math.PI / 2
+      cap.position.set(s * 6.5, 5.9, 16.5)
+      cap.userData.label = '2× EDLC 3,3 F/2,7 V em série · banco da rajada Wi-Fi'
+      kids.add(cap)
+    }
     kids.traverse(m => { if (m.isMesh) m.castShadow = true })
-    parts['Bandeja · CR2477 + ESP32-C3'].obj.add(kids)
+    parts['Bandeja · ESP32-C3 + EDLCs'].obj.add(kids)
   }
 })
 
