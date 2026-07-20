@@ -501,10 +501,10 @@
   <div class="tableCard"><table>
     <tr><th>Nível (z)</th><th>Elemento</th><th>Verificação</th></tr>
     <tr><td>11,3 – 19,0</td><td>CR2477 (Ø24,5×7,7) no poço da base maciça, em −X</td><td>Poço Ø25,4 · parede até o canal do O-ring: 1,0 mm · espuma EVA 4 mm por cima, prensada pela bandeja</td></tr>
-    <tr><td>17,0 – 20,0</td><td>Módulo LIS3DH na moldura do deck, em +X</td><td>Moldura 100 % dentro do deck Ø53 · caminho sólido até o motor · não conflita com o poço (folga 1,8 mm)</td></tr>
-    <tr><td>21,5 – 23,5</td><td>Bandeja Ø51 sobre 3 postes (90°/225°/315°)</td><td>Postes fora do poço, da moldura e do banco EDLC</td></tr>
-    <tr><td>23,5 – 27,8</td><td>ESP32-C3 centrado (cantos em r=14,4)</td><td>Folga radial 11 mm ao furo · <em>antena para +Y: janela sem metal</em> (célula em −X, EDLCs em −Y)</td></tr>
-    <tr><td>23,5 – 31,3</td><td>2× EDLC Ø8×11,5 deitados topo a topo, em −Y</td><td>Berço entre nervuras · folga 1,7 mm ao teto</td></tr>
+    <tr><td>17,0 – 20,0</td><td>Módulo LIS3DH (placa real: 12,85 × 28,17 mm) na moldura do deck, em +X, eixo longo em Y</td><td>Cavidade 13,35 × 28,7 (folga 0,5) · header sai pelas paredes curtas · caminho sólido até o motor · folga 3,1 mm ao poço</td></tr>
+    <tr><td>21,5 – 23,5</td><td>Bandeja Ø51 sobre 3 postes (65°/135°/262°)</td><td>Postes fora do poço, da moldura de 31,9 mm e do banco EDLC</td></tr>
+    <tr><td>23,5 – 27,8</td><td>ESP32-C3 centrado (cantos em r=14,4)</td><td>Folga radial 11 mm ao furo · <em>antena para +Y: janela sem metal</em> (célula e EDLCs em −X)</td></tr>
+    <tr><td>23,5 – 31,3</td><td>2× EDLC Ø8×11,5 deitados topo a topo, em −X</td><td>Berço entre nervuras · folga 1,7 mm ao teto</td></tr>
     <tr><td>33 / 36</td><td>Teto interno · topo externo do corpo</td><td>Sensor Ø64 × 36 mm — mais baixo = ressonância de fixação mais alta na fita VHB</td></tr>
   </table></div>
 
@@ -515,7 +515,7 @@
   <div class="tableCard"><table>
     <tr><th>Ref.</th><th>Componente</th><th>Especificação / exemplo</th><th>Função</th><th>Qtd.</th><th>Custo</th></tr>
     <tr><td>U1</td><td>ESP32-C3 SuperMini</td><td>Wi-Fi 2,4 GHz, USB-C, RISC-V 160 MHz</td><td>Cérebro: FFT, features, rádio</td><td>1</td><td>R$ 25</td></tr>
-    <tr><td>U2</td><td>Módulo LIS3DH</td><td>Breakout I²C 3V3 (ex. GY-LIS3DH / Adafruit 2809)</td><td>Acelerômetro ±16 g, 3,2 kHz</td><td>1</td><td>R$ 14</td></tr>
+    <tr><td>U2</td><td>Módulo LIS3DH</td><td>Breakout I²C 3V3 — placa recebida: <em>12,85 × 28,17 mm</em>, header na ponta (moldura do deck já é essa medida)</td><td>Acelerômetro ±16 g, 3,2 kHz</td><td>1</td><td>R$ 14</td></tr>
     <tr><td>BT1</td><td>Célula CR2477</td><td>3 V / 1000 mAh, <em>com abas soldadas</em> (não usar suporte de pressão: vibração)</td><td>Energia média por ~12 meses</td><td>1</td><td>R$ 18</td></tr>
     <tr><td>C1</td><td>Banco de rajada (EDLC)</td><td>2× EDLC 2,7 V / 3,3 F Ø8×11,5 em série (1,65 F ef., ESR &lt; 0,5 Ω) — deitados no berço da bandeja</td><td>Reserva de pico da rajada Wi-Fi</td><td>2</td><td>R$ 10</td></tr>
     <tr><td>R5, R6</td><td>Resistores 1 MΩ</td><td>1/4 W 1%, um em paralelo com cada EDLC</td><td>Balanceamento da tensão do banco em série</td><td>2</td><td>R$ 0,20</td></tr>
@@ -623,7 +623,7 @@ $ curl hub.safeboat.local/api/v1/devices
   <ol class="steps">
     <li><b>Sele o interior</b> do corpo com uma demão fina de epóxi e cure por 24 h.</li>
     <li><b>Encaixe o LIS3DH</b> na moldura do deck (lado +X) — módulo prensado, com um ponto de epóxi nos cantos. É o único componente que exige rigidez.</li>
-    <li><b>Monte a bandeja:</b> ESP32-C3 centrado entre as nervuras com fita VHB (<b>antena para +Y</b> — a janela sem metal), os 2 EDLCs deitados topo a topo no berço em −Y, com um filete de adesivo e R5/R6 soldados neles.</li>
+    <li><b>Monte a bandeja:</b> ESP32-C3 centrado entre as nervuras com fita VHB (<b>antena para +Y</b> — a janela sem metal), os 2 EDLCs deitados topo a topo no berço em −X, com um filete de adesivo e R5/R6 soldados neles.</li>
     <li><b>Ligue a elétrica</b> conforme o <a href="#eletrica">diagrama</a>: BT1 → R1 680 Ω → D1 Schottky → banco C1 → pino 3V3; LIS3DH no I²C (GPIO8/9) com INT1 no GPIO3; reed S1 no GPIO1; divisor R2/R3 no GPIO0. Verniz conformal em tudo.</li>
     <li><b>Grave o firmware</b> via USB-C, configure SSID/hub no AP de comissionamento e confirme o primeiro POST no hub.</li>
     <li><b>Deite a CR2477 no poço</b> da base (abas soldadas para cima, fios até a bandeja), cubra com o disco de <b>espuma EVA 4 mm</b>, assente a bandeja nas espigas dos 3 postes — a espuma fica prensada segurando a célula — e rosqueie o corpo com o O-ring 48×2 engraxado no canal da base.</li>
@@ -924,10 +924,10 @@ loadAll.then(() => {
   // CR2477 deitada no poço da base maciça (x=−11,6, z 11,3–19)
   {
     const lis = new THREE.Group()
-    const pcb = new THREE.Mesh(new THREE.BoxGeometry(17, 1.4, 15), matPCB)
-    pcb.position.set(13.2, 18.2, 0)
+    const pcb = new THREE.Mesh(new THREE.BoxGeometry(12.85, 1.4, 28.17), matPCB)
+    pcb.position.set(12.5, 18.2, 0)
     const mems = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.1, 3.2), matSteel)
-    mems.position.set(13.2, 19.4, 0)
+    mems.position.set(12.5, 19.4, -3)
     lis.add(pcb, mems)
     lis.traverse(m => { if (m.isMesh) { m.castShadow = true; m.userData.label = 'LIS3DH ±16 g — acoplado rígido à base' } })
     const cell = new THREE.Mesh(new THREE.CylinderGeometry(12.25, 12.25, 7.7, 64), matCell)
@@ -945,11 +945,11 @@ loadAll.then(() => {
     shield.position.set(0, 4.4, 2)
     esp.userData.label = shield.userData.label = 'ESP32-C3 SuperMini · antena para a janela livre'
     kids.add(esp, shield)
-    // 2× EDLC Ø8×11,5 deitados topo a topo no berço em −Y (mundo +Z)
+    // 2× EDLC Ø8×11,5 deitados topo a topo no berço em −X (eixo no mundo Z)
     for (const s of [1, -1]) {
       const cap = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 11.5, 32), matSteel)
-      cap.rotation.z = Math.PI / 2
-      cap.position.set(s * 6.5, 5.9, 16.5)
+      cap.rotation.x = Math.PI / 2
+      cap.position.set(-16.5, 5.9, s * 6)
       cap.userData.label = '2× EDLC 3,3 F/2,7 V em série · banco da rajada Wi-Fi'
       kids.add(cap)
     }
