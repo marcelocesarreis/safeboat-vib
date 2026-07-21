@@ -277,9 +277,42 @@ void burst () {
 }
 
 // ------------------------------------------- ciclo do modo monitor (JSON)
-// Uma linha JSON por ciclo (~1,4 s): stats por eixo + FFT 256 bins (máx de
-// cada grupo de 4) + forma de onda 256 pts do eixo dominante.
+// v0.4: o ESP só ADQUIRE — despeja a rajada BRUTA (3 eixos × 2048 int16)
+// numa linha JSON e a FFT/análise roda no PC (tools/live-server.cjs), com
+// resolução cheia nos 3 eixos. ~40 kB/linha: trivial p/ o USB CDC nativo.
 void monitorCycle () {
+  if (!lisAlive()) {
+    Serial.println("{\"vib\":0,\"err\":\"sensor fora do barramento — recuperando\"}");
+    busClear();
+    delay(20);
+    if (!lisInit()) { delay(1000); return; }
+    Serial.println("{\"vib\":0,\"err\":\"sensor recuperado\"}");
+  }
+  float dt; bool ovr;
+  if (!captureBurst(dt, ovr)) {
+    Serial.println("{\"vib\":0,\"err\":\"captura sem dados (sensor reiniciou?) — reconfigurando\"}");
+    busClear(); delay(20); lisInit();
+    return;
+  }
+  if (N_BURST / dt > odrHz * 1.5f) {
+    Serial.println("{\"vib\":0,\"err\":\"leituras invalidas — reconfigurando\"}");
+    busClear(); delay(20); lisInit();
+    return;
+  }
+  Serial.printf("{\"raw\":1,\"fs\":%.1f,\"ovr\":%d,\"scale\":%d,\"sens\":%.4f",
+    N_BURST / dt, ovr ? 1 : 0, 2 << fsIdx, mgPerDig());
+  const char *k[3] = { ",\"x\":[", ",\"y\":[", ",\"z\":[" };
+  int16_t *axes[3] = { bx, by, bz };
+  for (int a = 0; a < 3; a++) {
+    Serial.print(k[a]);
+    for (int i = 0; i < N_BURST; i++) Serial.printf(i ? ",%d" : "%d", axes[a][i]);
+    Serial.print("]");
+  }
+  Serial.println("}");
+}
+
+// ------------------------- versão antiga (FFT no ESP), mantida p/ referência
+void monitorCycleOnDevice () {
   // watchdog do sensor: se o barramento morreu (fio mexido, reset no meio
   // de transação), destrava e re-inicializa em vez de emitir lixo 0xFF
   if (!lisAlive()) {

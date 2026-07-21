@@ -75,7 +75,7 @@
     <tr id="ry"><td>Y</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
     <tr id="rz"><td>Z</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
   </table></div>
-  <p class="foot">Cada ciclo = rajada de 2048 amostras na FIFO do LIS3DSH (~1,24 s) + FFT no próprio ESP32-C3 — o mesmo pipeline do produto. Encoste o sensor em algo que vibra (ventilador, compressor, celular no viva-voz) e veja o espectro e a zona ISO responderem. Zonas ISO 10816: A&lt;1,4 · B&lt;2,8 · C&lt;7,1 · D&gt;7,1 mm/s.</p>
+  <p class="foot" id="foot">Cada ciclo = rajada de 2048 amostras na FIFO do LIS3DSH (~1,24 s); o ESP só adquire — a <b>FFT de resolução cheia roda no PC</b> (0,8 Hz/bin, 3 eixos). Encoste o sensor em algo que vibra (ventilador, compressor, celular no viva-voz) e veja o espectro e a zona ISO responderem. Zonas ISO 10816: A&lt;1,4 · B&lt;2,8 · C&lt;7,1 · D&gt;7,1 mm/s.</p>
 </main>
 <script>
 const $ = id => document.getElementById(id)
