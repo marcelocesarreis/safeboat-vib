@@ -304,16 +304,16 @@
     <div class="alerts" id="alerts"><div class="empty">Nenhum alerta — vibração dentro do padrão do motor.</div></div>
   </div>
 
-  <div class="note">O código desta página (<code>engine.js</code>) é a implementação de referência do pipeline: no barco, o simulador dá lugar aos blocos reais do LIS3DH, e a comparação motor×referência roda no hub SAFEBOAT. A projeção pontilhada na tendência é o <b>preditivo</b>: dias até a zona C na taxa de degradação atual.</div>
+  <div class="note">O código desta página (<code>engine.js</code>) é a implementação de referência do pipeline: no barco, o simulador dá lugar aos blocos reais do LIS3DSH, e a comparação motor×referência roda no hub SAFEBOAT. A projeção pontilhada na tendência é o <b>preditivo</b>: dias até a zona C na taxa de degradação atual.</div>
 </section>
 
 <!-- ============================================================ método -->
 <section id="metodo">
   <div class="kick">MÉTODO</div>
   <h2>Comparar sensores,<br>anular a dinâmica.</h2>
-  <p class="sub">O balanço do mar vive abaixo de ~3 Hz e é <b>comum a todo o casco</b>; a assinatura mecânica do motor vive de 10 a 1600 Hz e só existe no motor. O VIB explora as duas propriedades ao mesmo tempo — subtração coerente na banda do mar, análise espectral na banda da máquina.</p>
+  <p class="sub">O balanço do mar vive abaixo de ~3 Hz e é <b>comum a todo o casco</b>; a assinatura mecânica do motor vive de 10 a 800 Hz e só existe no motor. O VIB explora as duas propriedades ao mesmo tempo — subtração coerente na banda do mar, análise espectral na banda da máquina.</p>
   <div class="pipe">
-    <div class="stg"><div class="t">1 · Aquisição</div><div class="d">Rajada de 2048 amostras a <b>3,2 kHz</b> (LIS3DH, FIFO) em cada eixo, a cada 10 min</div></div>
+    <div class="stg"><div class="t">1 · Aquisição</div><div class="d">Rajada de 2048 amostras a <b>1,6 kHz</b> (LIS3DSH, FIFO) em cada eixo, a cada 10 min</div></div>
     <div class="stg"><div class="t">2 · Referência</div><div class="d">Sensor gêmeo no <b>casco</b> (longe do motor) captura só a dinâmica do mar</div></div>
     <div class="stg"><div class="t">3 · Cancelamento</div><div class="d">k̂ estimado por projeção na banda &lt;5 Hz; <b>comp = motor − k̂·ref</b></div></div>
     <div class="stg"><div class="t">4 · FFT</div><div class="d">2048 pontos, janela Hann, no próprio ESP32-C3 (~40 ms)</div></div>
@@ -329,9 +329,9 @@
 <section id="specs">
   <div class="kick">ESPECIFICAÇÕES</div>
   <h2>Uma moeda de lítio.<br>Um ano de vigília.</h2>
-  <p class="sub">ESP32-C3 SuperMini + acelerômetro LIS3DH num puck Ø64 mm impresso em ASA. Cola no motor com fita 3M VHB, dorme a 20 µA e só liga o rádio para entregar o que já processou. <b>R$ ~110 por ponto monitorado.</b></p>
+  <p class="sub">ESP32-C3 SuperMini + acelerômetro LIS3DSH num puck Ø64 mm impresso em ASA. Cola no motor com fita 3M VHB, dorme a 20 µA e só liga o rádio para entregar o que já processou. <b>R$ ~110 por ponto monitorado.</b></p>
   <div class="grid">
-    <div class="card"><div class="big">±16 g <small>· 3,2 kHz</small></div><div class="lbl"><b>LIS3DH</b> · 3 eixos, FIFO, 2 µA em standby · banda de análise 10–1600 Hz — cobre de desbalanceamento a rolamento</div></div>
+    <div class="card"><div class="big">±16 g <small>· 16 bits</small></div><div class="lbl"><b>LIS3DSH</b> · 3 eixos, 1,6 kHz, FIFO, standby de µA · banda de análise 10–800 Hz — desbalanceamento, desalinhamento, folga e impactos</div></div>
     <div class="card"><div class="big">ESP32-C3</div><div class="lbl">SuperMini · RISC-V 160 MHz · <b>Wi-Fi 2,4 GHz</b> · FFT e features a bordo · deep sleep ~20 µA (LED removido)</div></div>
     <div class="card"><div class="big">CR2477</div><div class="lbl">Célula de lítio 3 V / 1000 mAh · <b>~12 meses</b> de operação · troca em 20 s pela tampa roscada, sem descolar a fita</div></div>
     <div class="card"><div class="big">Ø64 × 36 <small>mm</small></div><div class="lbl">Puck em <b>ASA</b> com berço baioneta · ~65 g · IP66 alvo (rosca + O-ring radial, receita da família Térmica)</div></div>
@@ -347,7 +347,7 @@
   <p class="sub">Uma CR2477 entrega microamperes com 1000 mAh de fôlego — mas o rádio Wi-Fi pede rajadas de centenas de miliamperes. A solução clássica de eletrônica de baixa potência: separar <b>energia</b> de <b>potência</b>. A célula carrega um banco de <b>2 supercapacitores EDLC em série</b> a conta-gotas (≤ 4 mA); o rádio só liga quando a reserva está cheia.</p>
   <div class="tableCard"><table>
     <tr><th>Estado</th><th>Corrente</th><th>Duração / cadência</th><th>Orçamento diário</th></tr>
-    <tr><td>Deep sleep</td><td>~20 µA (SuperMini com LED removido) + 2 µA LIS3DH</td><td>~99,7 % do tempo</td><td>0,53 mAh</td></tr>
+    <tr><td>Deep sleep</td><td>~20 µA (SuperMini com LED removido) + 2 µA LIS3DSH</td><td>~99,7 % do tempo</td><td>0,53 mAh</td></tr>
     <tr><td>Medição</td><td>~25 mA (CPU + I²C lendo o FIFO)</td><td>0,9 s × 96/dia</td><td>0,60 mAh</td></tr>
     <tr><td>Transmissão Wi-Fi</td><td>pico 300 mA — <em>vem do supercapacitor</em></td><td>~2,5 s × 6/dia</td><td>0,52 mAh</td></tr>
     <tr><td>Recarga do banco EDLC</td><td>limitada a 4 mA (dentro do pulso seguro da célula)</td><td>~20 min após cada rajada — folga enorme na janela de 4 h</td><td>—</td></tr>
@@ -434,7 +434,7 @@
       <text x="738" y="260" fill="#7c3aed" font-size="10" text-anchor="end">GPIO3 · INT1</text>
       <text x="738" y="308" fill="#a16207" font-size="10" text-anchor="end">GPIO1 · reed</text>
       <text x="738" y="344" fill="#15803d" font-size="10" text-anchor="end">GPIO10 · LED</text>
-      <!-- VDD + I2C p/ LIS3DH -->
+      <!-- VDD + I2C p/ LIS3DSH -->
       <line x1="748" y1="150" x2="812" y2="150" stroke="#c2410c" stroke-width="2.5"/>
       <line x1="748" y1="184" x2="812" y2="184" stroke="#2563eb" stroke-width="2.5"/>
       <line x1="748" y1="220" x2="812" y2="220" stroke="#15803d" stroke-width="2.5"/>
@@ -444,12 +444,12 @@
       <text x="780" y="212" fill="#15803d" font-size="9.5" text-anchor="middle">SCL</text>
       <text x="780" y="248" fill="#7c3aed" font-size="9.5" text-anchor="middle">INT1</text>
       <text x="780" y="268" fill="#6b7385" font-size="8.5" text-anchor="middle">wake por impacto</text>
-      <!-- LIS3DH -->
+      <!-- LIS3DSH -->
       <rect x="812" y="112" width="128" height="196" rx="12" fill="#f3f5f9" stroke="#23304A"/>
-      <text x="876" y="136" fill="#23304A" font-size="10.5" text-anchor="middle" letter-spacing="1" font-weight="700">U2 · LIS3DH</text>
-      <text x="876" y="152" fill="#6b7385" font-size="10" text-anchor="middle">±16 g · 3,2 kHz · FIFO</text>
+      <text x="876" y="136" fill="#23304A" font-size="10.5" text-anchor="middle" letter-spacing="1" font-weight="700">U2 · LIS3DSH</text>
+      <text x="876" y="152" fill="#6b7385" font-size="10" text-anchor="middle">±16 g · 1,6 kHz · 16 bits</text>
       <text x="876" y="168" fill="#6b7385" font-size="9" text-anchor="middle">2 µA em standby</text>
-      <text x="876" y="196" fill="#6b7385" font-size="9.5" text-anchor="middle">I²C addr 0x18 · 400 kHz</text>
+      <text x="876" y="196" fill="#6b7385" font-size="9.5" text-anchor="middle">I²C addr 0x1D · 400 kHz</text>
       <text x="876" y="210" fill="#6b7385" font-size="9.5" text-anchor="middle">pull-ups 4,7 kΩ no módulo</text>
       <rect x="856" y="240" width="40" height="30" rx="4" fill="#e7ebf2" stroke="#8b93a5"/>
       <text x="876" y="259" fill="#444b5c" font-size="9" text-anchor="middle">MEMS</text>
@@ -491,7 +491,7 @@
     <span><i style="background:#a16207"></i>limitador / reed</span>
     <span><i style="background:#5b6270"></i>GND</span>
   </div>
-  <div class="note"><b>Três decisões que definem o circuito:</b> ① o ESP32-C3 é alimentado <b>pelo pino 3V3</b>, direto do trilho do supercap — o LDO da SuperMini fica fora do caminho (economiza o quiescente) e o USB-C segue funcionando na bancada; ② o divisor R2/R3 de 1 MΩ dá leitura de Vcap com consumo de 1,5 µA — o firmware só transmite com Vcap ≥ 2,9 V; ③ o INT1 do LIS3DH acorda o ESP em <b>impacto forte</b> (wake-on-motion): um evento anômalo fura a fila e é reportado na hora, não na próxima janela.</div>
+  <div class="note"><b>Três decisões que definem o circuito:</b> ① o ESP32-C3 é alimentado <b>pelo pino 3V3</b>, direto do trilho do supercap — o LDO da SuperMini fica fora do caminho (economiza o quiescente) e o USB-C segue funcionando na bancada; ② o divisor R2/R3 de 1 MΩ dá leitura de Vcap com consumo de 1,5 µA — o firmware só transmite com Vcap ≥ 2,9 V; ③ o INT1 do LIS3DSH acorda o ESP em <b>impacto forte</b> (wake-on-motion): um evento anômalo fura a fila e é reportado na hora, não na próxima janela.</div>
   <div class="note warn"><b>Firmware — brownout em 2,55 V:</b> o trilho afunda durante a rajada Wi-Fi (ESR do supercap); com o detector padrão em 2,7 V o rádio reiniciaria no meio da transmissão. Ajustar <code>CONFIG_ESP_BROWNOUT_DET_LVL</code> e validar a rajada inteira no osciloscópio antes de fechar a case.</div>
 
   <div style="height:44px"></div>
@@ -501,7 +501,7 @@
   <div class="tableCard"><table>
     <tr><th>Nível (z)</th><th>Elemento</th><th>Verificação</th></tr>
     <tr><td>11,3 – 19,0</td><td>CR2477 (Ø24,5×7,7) no poço da base maciça, em −X</td><td>Poço Ø25,4 · parede até o canal do O-ring: 1,0 mm · espuma EVA 4 mm por cima, prensada pela bandeja</td></tr>
-    <tr><td>17,0 – 20,0</td><td>Módulo LIS3DH (placa real: 12,85 × 28,17 mm) na moldura do deck, em +X, eixo longo em Y</td><td>Cavidade 13,35 × 28,7 (folga 0,5) · header sai pelas paredes curtas · caminho sólido até o motor · folga 3,1 mm ao poço</td></tr>
+    <tr><td>17,0 – 20,0</td><td>Módulo LIS3DSH (placa real: 12,85 × 28,17 mm) na moldura do deck, em +X, eixo longo em Y</td><td>Cavidade 13,35 × 28,7 (folga 0,5) · header sai pelas paredes curtas · caminho sólido até o motor · folga 3,1 mm ao poço</td></tr>
     <tr><td>21,5 – 23,5</td><td>Bandeja Ø51 sobre 3 postes (65°/135°/262°)</td><td>Postes fora do poço, da moldura de 31,9 mm e do banco EDLC</td></tr>
     <tr><td>23,5 – 27,8</td><td>ESP32-C3 centrado (cantos em r=14,4)</td><td>Folga radial 11 mm ao furo · <em>antena para +Y: janela sem metal</em> (célula e EDLCs em −X)</td></tr>
     <tr><td>23,5 – 31,3</td><td>2× EDLC Ø8×11,5 deitados topo a topo, em −X</td><td>Berço entre nervuras · folga 1,7 mm ao teto</td></tr>
@@ -515,7 +515,7 @@
   <div class="tableCard"><table>
     <tr><th>Ref.</th><th>Componente</th><th>Especificação / exemplo</th><th>Função</th><th>Qtd.</th><th>Custo</th></tr>
     <tr><td>U1</td><td>ESP32-C3 SuperMini</td><td>Wi-Fi 2,4 GHz, USB-C, RISC-V 160 MHz</td><td>Cérebro: FFT, features, rádio</td><td>1</td><td>R$ 25</td></tr>
-    <tr><td>U2</td><td>Módulo LIS3DH</td><td>Breakout I²C 3V3 — placa recebida: <em>12,85 × 28,17 mm</em>, header na ponta (moldura do deck já é essa medida)</td><td>Acelerômetro ±16 g, 3,2 kHz</td><td>1</td><td>R$ 14</td></tr>
+    <tr><td>U2</td><td>Módulo LIS3DSH</td><td>Breakout I²C 3V3 — placa recebida: <em>12,85 × 28,17 mm</em>, header na ponta. Vendida como "LIS3DH", o silício identificou-se <b>LIS3DSH</b> (WHO_AM_I 0x3F em 0x1D) — melhor: 16 bits. O firmware detecta e suporta os dois.</td><td>Acelerômetro ±16 g, 1,6 kHz, 16 bits</td><td>1</td><td>R$ 14</td></tr>
     <tr><td>BT1</td><td>Célula CR2477</td><td>3 V / 1000 mAh, <em>com abas soldadas</em> (não usar suporte de pressão: vibração)</td><td>Energia média por ~12 meses</td><td>1</td><td>R$ 18</td></tr>
     <tr><td>C1</td><td>Banco de rajada (EDLC)</td><td>2× EDLC 2,7 V / 3,3 F Ø8×11,5 em série (1,65 F ef., ESR &lt; 0,5 Ω) — deitados no berço da bandeja</td><td>Reserva de pico da rajada Wi-Fi</td><td>2</td><td>R$ 10</td></tr>
     <tr><td>R5, R6</td><td>Resistores 1 MΩ</td><td>1/4 W 1%, um em paralelo com cada EDLC</td><td>Balanceamento da tensão do banco em série</td><td>2</td><td>R$ 0,20</td></tr>
@@ -622,9 +622,9 @@ $ curl hub.safeboat.local/api/v1/devices
   <div style="height:14px"></div>
   <ol class="steps">
     <li><b>Sele o interior</b> do corpo com uma demão fina de epóxi e cure por 24 h.</li>
-    <li><b>Encaixe o LIS3DH</b> na moldura do deck (lado +X) — módulo prensado, com um ponto de epóxi nos cantos. É o único componente que exige rigidez.</li>
+    <li><b>Encaixe o LIS3DSH</b> na moldura do deck (lado +X) — módulo prensado, com um ponto de epóxi nos cantos. É o único componente que exige rigidez.</li>
     <li><b>Monte a bandeja:</b> ESP32-C3 centrado entre as nervuras com fita VHB (<b>antena para +Y</b> — a janela sem metal), os 2 EDLCs deitados topo a topo no berço em −X, com um filete de adesivo e R5/R6 soldados neles.</li>
-    <li><b>Ligue a elétrica</b> conforme o <a href="#eletrica">diagrama</a>: BT1 → R1 680 Ω → D1 Schottky → banco C1 → pino 3V3; LIS3DH no I²C (GPIO8/9) com INT1 no GPIO3; reed S1 no GPIO1; divisor R2/R3 no GPIO0. Verniz conformal em tudo.</li>
+    <li><b>Ligue a elétrica</b> conforme o <a href="#eletrica">diagrama</a>: BT1 → R1 680 Ω → D1 Schottky → banco C1 → pino 3V3; LIS3DSH no I²C (GPIO8/9) com INT1 no GPIO3; reed S1 no GPIO1; divisor R2/R3 no GPIO0. Verniz conformal em tudo.</li>
     <li><b>Grave o firmware</b> via USB-C, configure SSID/hub no AP de comissionamento e confirme o primeiro POST no hub.</li>
     <li><b>Deite a CR2477 no poço</b> da base (abas soldadas para cima, fios até a bandeja), cubra com o disco de <b>espuma EVA 4 mm</b>, assente a bandeja nas espigas dos 3 postes — a espuma fica prensada segurando a célula — e rosqueie o corpo com o O-ring 48×2 engraxado no canal da base.</li>
     <li><b>Cole o berço:</b> desengraxe o ponto do motor com isopropílico, aplique o disco de VHB 5952 no berço, posicione e pressione por 15 s. Espere 1 h antes de carregar.</li>
@@ -683,17 +683,18 @@ $ curl hub.safeboat.local/api/v1/devices
   <p class="sub">STLs prontos para fatiar no Bambu Studio. Modelos gerados parametricamente — edite <code>tools/generate-stl.cjs</code> para ajustar qualquer cota. A rede de análise está em <code>public/engine.js</code>.</p>
   <div class="dl">
     <a href="stl/corpo.stl" download><span class="n">corpo.stl</span><span class="d">Copo Ø64×32 · marca gravada</span></a>
-    <a href="stl/base.stl" download><span class="n">base.stl</span><span class="d">O-ring + baioneta + poços LIS3DH/CR2477</span></a>
+    <a href="stl/base.stl" download><span class="n">base.stl</span><span class="d">O-ring + baioneta + poços LIS3DSH/CR2477</span></a>
     <a href="stl/bandeja.stl" download><span class="n">bandeja.stl</span><span class="d">Carrier ESP32-C3 + banco EDLC</span></a>
     <a href="stl/berco.stl" download><span class="n">berco.stl</span><span class="d">Berço baioneta Ø75 · fita VHB</span></a>
     <a href="engine.js" download><span class="n">engine.js</span><span class="d">Rede de análise de vibração (referência)</span></a>
+    <a href="https://github.com/marcelocesarreis/safeboat-vib/tree/main/firmware/vib-bench"><span class="n">vib-bench.ino</span><span class="d">Firmware de bancada v0.2 · ESP32-C3 + LIS3DSH/LIS3DH</span></a>
   </div>
 </section>
 
 <footer>
   <img src="img/logo-safeboat-branco.png" alt="SAFEBOAT">
   <div class="tagline">ENGENHARIA NAVAL &amp; PREVENÇÃO</div>
-  VIB — sensor de vibração autônomo com cancelamento de mar · LIS3DH + ESP32-C3 + CR2477 · 2026
+  VIB — sensor de vibração autônomo com cancelamento de mar · LIS3DSH + ESP32-C3 + CR2477 · 2026
 </footer>
 
 <script src="engine.js"></script>
@@ -892,7 +893,7 @@ function addSTL (url, mat, { pos = [0, 0, 0], rot = [-Math.PI / 2, 0, 0], name, 
 
 const loadAll = Promise.all([
   addSTL('stl/berco.stl', matShell, { name: 'Berço baioneta (fica no motor)', pos: [0, 0, 0], dir: [0, -1, 0], dist: 26 }),
-  addSTL('stl/base.stl', matShell, { name: 'Base · O-ring + poços LIS3DH e CR2477', pos: [0, 3, 0], dir: [0, 1, 0], dist: 14 }),
+  addSTL('stl/base.stl', matShell, { name: 'Base · O-ring + poços LIS3DSH e CR2477', pos: [0, 3, 0], dir: [0, 1, 0], dist: 14 }),
   addSTL('stl/bandeja.stl', matDark, { name: 'Bandeja · ESP32-C3 + EDLCs', pos: [0, 24.5, 0], dir: [0, 1, 0], dist: 42 }),
   addSTL('stl/corpo.stl', matShell, { name: 'Corpo roscado · marca SAFEBOAT', pos: [0, 7, 0], dir: [0, 1, 0], dist: 78 }),
 ])
@@ -920,7 +921,7 @@ function proc (name, mesh, pos, dir, dist) {
 }
 
 loadAll.then(() => {
-  // eletrônica do deck (filhos da base): LIS3DH na moldura (x=+13,2) e
+  // eletrônica do deck (filhos da base): LIS3DSH na moldura (x=+13,2) e
   // CR2477 deitada no poço da base maciça (x=−11,6, z 11,3–19)
   {
     const lis = new THREE.Group()
@@ -929,12 +930,12 @@ loadAll.then(() => {
     const mems = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.1, 3.2), matSteel)
     mems.position.set(12.5, 19.4, -3)
     lis.add(pcb, mems)
-    lis.traverse(m => { if (m.isMesh) { m.castShadow = true; m.userData.label = 'LIS3DH ±16 g — acoplado rígido à base' } })
+    lis.traverse(m => { if (m.isMesh) { m.castShadow = true; m.userData.label = 'LIS3DSH ±16 g — acoplado rígido à base' } })
     const cell = new THREE.Mesh(new THREE.CylinderGeometry(12.25, 12.25, 7.7, 64), matCell)
     cell.position.set(-11.6, 15.15, 0)
     cell.castShadow = true
     cell.userData.label = 'CR2477 no poço da base · espuma EVA por cima'
-    parts['Base · O-ring + poços LIS3DH e CR2477'].obj.add(lis, cell)
+    parts['Base · O-ring + poços LIS3DSH e CR2477'].obj.add(lis, cell)
   }
   // ESP centrado + banco de EDLCs na bandeja (filhos da bandeja)
   {
