@@ -51,6 +51,11 @@ const uint8_t FS_3DSH[4] = { 0b000, 0b001, 0b011, 0b100 };   // CTRL5 FSCALE
 
 bool streaming = false;
 uint32_t tStream = 0;
+// modo monitor: emite ciclos de medição em JSON (consumido por tools/live-server.cjs).
+// Liga sozinho 4 s após o boot se nenhum comando chegar — a ponte serial só lê.
+bool monitor = false;
+bool cmdSeen = false;
+uint32_t bootT = 0;
 
 int16_t bx[N_BURST], by[N_BURST], bz[N_BURST];
 float re[N_BURST], im[N_BURST];
@@ -155,11 +160,9 @@ void fft (int n) {
 }
 
 // ------------------------------------------------------------------ rajada
-void burst () {
-  const float mg = mgPerDig();
-  Serial.printf("rajada: %d amostras @ %.0f Hz (%.2f s)...\n", N_BURST, odrHz, N_BURST / odrHz);
+void captureBurst (float &dt, bool &ovr) {
   fifoReset();
-  int n = 0; bool ovr = false;
+  int n = 0; ovr = false;
   uint32_t t0 = micros();
   while (n < N_BURST) {
     uint8_t src = rd8(REG_FIFO_SRC);
@@ -167,7 +170,14 @@ void burst () {
     int avail = src & 0x1F;
     while (avail-- && n < N_BURST) { rdSample(bx[n], by[n], bz[n]); n++; }
   }
-  float dt = (micros() - t0) / 1e6f;
+  dt = (micros() - t0) / 1e6f;
+}
+
+void burst () {
+  const float mg = mgPerDig();
+  Serial.printf("rajada: %d amostras @ %.0f Hz (%.2f s)...\n", N_BURST, odrHz, N_BURST / odrHz);
+  float dt; bool ovr;
+  captureBurst(dt, ovr);
   Serial.printf("capturado em %.2f s · taxa efetiva %.0f Hz%s\n", dt, N_BURST / dt, ovr ? " · FIFO OVERRUN!" : "");
 
   int16_t *axes[3] = { bx, by, bz };
@@ -224,6 +234,64 @@ void burst () {
   Serial.printf("RMS de velocidade 10-500 Hz: %.2f mm/s  (ISO 10816: A<1.4 B<2.8 C<7.1 D>7.1)\n\n", sqrtf(sumV2));
 }
 
+// ------------------------------------------- ciclo do modo monitor (JSON)
+// Uma linha JSON por ciclo (~1,4 s): stats por eixo + FFT 256 bins (máx de
+// cada grupo de 4) + forma de onda 256 pts do eixo dominante.
+void monitorCycle () {
+  const float mg = mgPerDig();
+  float dt; bool ovr;
+  captureBurst(dt, ovr);
+
+  int16_t *axes[3] = { bx, by, bz };
+  float mean[3], rms[3], peak[3];
+  int dom = 0;
+  for (int a = 0; a < 3; a++) {
+    float m = 0;
+    for (int i = 0; i < N_BURST; i++) m += axes[a][i];
+    m /= N_BURST;
+    float r = 0, p = 0;
+    for (int i = 0; i < N_BURST; i++) {
+      float d = axes[a][i] - m;
+      r += d * d;
+      if (fabsf(d) > p) p = fabsf(d);
+    }
+    mean[a] = m * mg; rms[a] = sqrtf(r / N_BURST) * mg; peak[a] = p * mg;
+    if (rms[a] > rms[dom]) dom = a;
+  }
+
+  for (int i = 0; i < N_BURST; i++) {
+    float w = 0.5f - 0.5f * cosf(2.0f * PI * i / (N_BURST - 1));
+    re[i] = (axes[dom][i] - mean[dom] / mg) * mg * 0.001f * w;
+    im[i] = 0;
+  }
+  fft(N_BURST);
+  float df = 1.0f / dt;
+  int nb = N_BURST / 2;
+  for (int i = 0; i < nb; i++) re[i] = sqrtf(re[i] * re[i] + im[i] * im[i]) * 4.0f / N_BURST;
+  float sumV2 = 0;
+  for (int i = (int)ceilf(10 / df); i <= (int)floorf(500 / df); i++) {
+    float v = re[i] * 9810.0f / (2.0f * PI * (i * df)) / 1.41421f;
+    sumV2 += v * v;
+  }
+
+  Serial.printf("{\"vib\":1,\"fs\":%.1f,\"ovr\":%d,\"scale\":%d,\"dom\":%d,\"viso\":%.3f",
+    N_BURST / dt, ovr ? 1 : 0, 2 << fsIdx, dom, sqrtf(sumV2));
+  Serial.printf(",\"mean\":[%.1f,%.1f,%.1f],\"rms\":[%.2f,%.2f,%.2f],\"peak\":[%.1f,%.1f,%.1f]",
+    mean[0], mean[1], mean[2], rms[0], rms[1], rms[2], peak[0], peak[1], peak[2]);
+  Serial.print(",\"fft\":[");                 // 256 bins, mg, máx de cada 4
+  for (int i = 0; i < 256; i++) {
+    float m = 0;
+    for (int k = i * 4; k < i * 4 + 4 && k < nb; k++) if (re[k] > m) m = re[k];
+    Serial.printf(i ? ",%.2f" : "%.2f", m * 1000);
+  }
+  Serial.print("],\"wave\":[");               // 256 pts do eixo dominante, mg AC
+  for (int i = 0; i < 256; i++) {
+    float v = (axes[dom][i * 8] - mean[dom] / mg) * mg;
+    Serial.printf(i ? ",%.1f" : "%.1f", v);
+  }
+  Serial.println("]}");
+}
+
 // ------------------------------------------------------------------ setup
 void setup () {
   Serial.begin(115200);
@@ -244,14 +312,24 @@ void setup () {
     return;
   }
   printInfo();
+  bootT = millis();
 }
 
 // ------------------------------------------------------------------- loop
 void loop () {
   if (chip == NONE) { delay(500); return; }
+  if (!cmdSeen && !monitor && millis() - bootT > 4000) {
+    monitor = true;                          // bancada: liga sozinho p/ o live-server
+    Serial.println("modo monitor automatico (qualquer comando desliga; 'm' religa)");
+  }
   if (Serial.available()) {
     char c = Serial.read();
+    if (c == '\n' || c == '\r') return;
+    cmdSeen = true;
+    if (monitor && c != 'm') monitor = false;
     switch (c) {
+      case 'm': monitor = !monitor;
+        Serial.printf("monitor: %s\n", monitor ? "ON" : "OFF"); break;
       case 'i': printInfo(); break;
       case 'r': { int16_t x, y, z; rdSample(x, y, z);
         Serial.printf("X %+.3f g · Y %+.3f g · Z %+.3f g\n",
@@ -273,6 +351,7 @@ void loop () {
         Serial.printf("ODR real: %.1f Hz (nominal %.0f)\n", cnt / 2.0f, odrHz); } break;
     }
   }
+  if (monitor) { monitorCycle(); return; }
   if (streaming && millis() - tStream >= 20) {
     tStream = millis();
     int16_t x, y, z; rdSample(x, y, z);

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAFEBOAT VIB — Monitor de Bancada ao Vivo</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600&family=Source+Sans+3:wght@400;600;700&display=swap');
+  :root {
+    --navy: #23304A; --line: #dde2ea; --txt2: #6b7385; --panel2: #f3f5f9;
+    --ok: #15803d; --warn: #a16207; --crit: #b91c1c; --acc: #2563eb;
+    --sans: 'Source Sans 3', -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --serif-h: 'Josefin Sans', 'Segoe UI', sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #fff; color: var(--navy); font-family: var(--sans); }
+  header { background: var(--navy); color: #fff; height: 56px; display: flex; align-items: center; gap: 14px; padding: 0 22px; }
+  header img { height: 28px; }
+  header .divi { width: 1px; height: 24px; background: rgba(255,255,255,.35); }
+  header .prod { font-family: var(--serif-h); font-weight: 300; letter-spacing: .3em; font-size: 15px; padding-top: 2px; }
+  header .sub { color: rgba(255,255,255,.6); font-size: 12px; margin-left: auto; letter-spacing: .1em; }
+  .status { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600;
+            padding: 5px 12px; border-radius: 999px; background: rgba(255,255,255,.12); color: #fff; }
+  .status .dot { width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; }
+  .status.on .dot { background: #4ade80; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 20px 18px 40px; }
+  .gauges { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .g { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 13px 16px; }
+  .g .l { font-size: 10px; color: var(--txt2); letter-spacing: .18em; font-weight: 700; }
+  .g .v { font-family: var(--serif-h); font-size: 27px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .g .v small { font-size: 13px; color: var(--txt2); }
+  .zone { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .1em; padding: 2px 10px; border-radius: 999px; color: #fff; background: var(--ok); margin-top: 3px; }
+
+  .views { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 900px) { .views { grid-template-columns: 1fr; } }
+  .view .cap { font-size: 10.5px; color: var(--txt2); letter-spacing: .16em; text-transform: uppercase; font-weight: 700; margin: 4px 0 6px; }
+  canvas { width: 100%; border-radius: 10px; border: 1px solid var(--navy); background: #06070c; display: block; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 14px; }
+  th, td { text-align: right; padding: 7px 12px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  th { color: var(--txt2); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+  td:first-child, th:first-child { text-align: left; font-weight: 700; }
+  .tableCard { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-top: 14px; }
+  .tableCard tr:last-child td { border-bottom: none; }
+  .foot { color: var(--txt2); font-size: 11.5px; margin-top: 14px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<header>
+  <img src="img/logo-safeboat-branco.png" alt="SAFEBOAT">
+  <span class="divi"></span>
+  <span class="prod">VIB · MONITOR</span>
+  <span class="sub">PROTÓTIPO Nº 1 · ESP32-C3 + LIS3DSH</span>
+  <span class="status" id="st"><span class="dot"></span><span id="stTxt">conectando…</span></span>
+</header>
+<main>
+  <div class="gauges">
+    <div class="g"><div class="l">RMS VELOCIDADE 10–500 Hz</div><div class="v" id="gViso">— <small>mm/s</small></div><span class="zone" id="gZone">—</span></div>
+    <div class="g"><div class="l">|g| TOTAL (SANIDADE ≈1)</div><div class="v" id="gG">—</div></div>
+    <div class="g"><div class="l">EIXO DOMINANTE</div><div class="v" id="gDom">—</div></div>
+    <div class="g"><div class="l">TAXA REAL</div><div class="v" id="gFs">— <small>Hz</small></div></div>
+    <div class="g"><div class="l">ESCALA</div><div class="v" id="gScale">— <small>g</small></div></div>
+    <div class="g"><div class="l">CICLOS RECEBIDOS</div><div class="v" id="gN">0</div></div>
+  </div>
+  <div class="views">
+    <div class="view"><div class="cap">Forma de onda · eixo dominante (1,24 s)</div><canvas id="cvWave" width="560" height="240"></canvas></div>
+    <div class="view"><div class="cap">Espectro 0–800 Hz · pico rotulado</div><canvas id="cvFft" width="560" height="240"></canvas></div>
+  </div>
+  <div class="view"><div class="cap" style="margin-top:14px">Tendência · RMS de velocidade (últimos 120 ciclos)</div><canvas id="cvTrend" width="1140" height="130"></canvas></div>
+  <div class="tableCard"><table>
+    <tr><th>Eixo</th><th>Média (mg)</th><th>RMS-AC (mg)</th><th>Pico (mg)</th><th>Crista</th></tr>
+    <tr id="rx"><td>X</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+    <tr id="ry"><td>Y</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+    <tr id="rz"><td>Z</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+  </table></div>
+  <p class="foot">Cada ciclo = rajada de 2048 amostras na FIFO do LIS3DSH (~1,24 s) + FFT no próprio ESP32-C3 — o mesmo pipeline do produto. Encoste o sensor em algo que vibra (ventilador, compressor, celular no viva-voz) e veja o espectro e a zona ISO responderem. Zonas ISO 10816: A&lt;1,4 · B&lt;2,8 · C&lt;7,1 · D&gt;7,1 mm/s.</p>
+</main>
+<script>
+const $ = id => document.getElementById(id)
+const hist = []
+let nCiclos = 0
+
+function zone (v) {
+  if (v <= 1.4) return { t: 'ZONA A · NOVO', c: '#15803d' }
+  if (v <= 2.8) return { t: 'ZONA B · BOM', c: '#15803d' }
+  if (v <= 7.1) return { t: 'ZONA C · ALERTA', c: '#a16207' }
+  return { t: 'ZONA D · CRÍTICO', c: '#b91c1c' }
+}
+
+function drawWave (d) {
+  const cv = $('cvWave'), ctx = cv.getContext('2d')
+  const w = cv.width, h = cv.height
+  ctx.fillStyle = '#06070c'; ctx.fillRect(0, 0, w, h)
+  ctx.strokeStyle = 'rgba(255,255,255,.09)'
+  for (const f of [0.25, 0.5, 0.75]) { ctx.beginPath(); ctx.moveTo(0, h * f); ctx.lineTo(w, h * f); ctx.stroke() }
+  let lim = 10
+  for (const v of d.wave) lim = Math.max(lim, Math.abs(v) * 1.15)
+  ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 1.6
+  ctx.beginPath()
+  d.wave.forEach((v, i) => {
+    const x = i / (d.wave.length - 1) * w
+    const y = h / 2 - v / lim * h / 2 * 0.94
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)
+  })
+  ctx.stroke()
+  ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = '11px sans-serif'
+  ctx.fillText('±' + lim.toFixed(0) + ' mg', w - 56, 16)
+}
+
+function drawFft (d) {
+  const cv = $('cvFft'), ctx = cv.getContext('2d')
+  const w = cv.width, h = cv.height
+  ctx.fillStyle = '#06070c'; ctx.fillRect(0, 0, w, h)
+  const fmax = d.fs / 2
+  let top = 1
+  for (const v of d.fft) top = Math.max(top, v)
+  const grad = ctx.createLinearGradient(0, h, 0, 0)
+  grad.addColorStop(0, '#3b82f6'); grad.addColorStop(0.65, '#f59e0b'); grad.addColorStop(1, '#ef4444')
+  ctx.fillStyle = grad
+  const bw = w / d.fft.length
+  let pk = 0
+  d.fft.forEach((v, i) => {
+    if (v > d.fft[pk]) pk = i
+    const y = Math.min(1, Math.pow(v / top, 0.55)) * (h - 36)
+    ctx.fillRect(i * bw, h - 18 - y, bw * 0.8, y)
+  })
+  ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.font = '10px sans-serif'
+  for (const f of [0, 200, 400, 600, 800]) {
+    if (f > fmax) break
+    ctx.fillText(f + '', f / fmax * w + 2, h - 5)
+  }
+  const pkHz = (pk + 0.5) * fmax / d.fft.length
+  ctx.fillStyle = '#fff'; ctx.font = '12px sans-serif'
+  ctx.fillText(pkHz.toFixed(0) + ' Hz · ' + d.fft[pk].toFixed(1) + ' mg', Math.min(w - 120, pk * bw + 6), 20)
+}
+
+function drawTrend () {
+  const cv = $('cvTrend'), ctx = cv.getContext('2d')
+  const w = cv.width, h = cv.height
+  ctx.fillStyle = '#06070c'; ctx.fillRect(0, 0, w, h)
+  const max = 8
+  for (const [y0, y1, c] of [[0, 2.8, 'rgba(21,128,61,.16)'], [2.8, 7.1, 'rgba(161,98,7,.16)'], [7.1, max, 'rgba(185,28,28,.16)']]) {
+    ctx.fillStyle = c
+    ctx.fillRect(0, h - y1 / max * h, w, (y1 - y0) / max * h)
+  }
+  if (hist.length > 1) {
+    ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2
+    ctx.beginPath()
+    hist.forEach((v, i) => {
+      const x = i / Math.max(119, hist.length - 1) * w
+      const y = h - Math.min(1, v / max) * h
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)
+    })
+    ctx.stroke()
+  }
+}
+
+const es = new EventSource('/events')
+es.onmessage = e => {
+  const d = JSON.parse(e.data)
+  if (d.status) { $('stTxt').textContent = d.status; $('st').classList.toggle('on', /conectado/.test(d.status)) }
+  if (!d.vib) return
+  nCiclos++
+  $('st').classList.add('on'); $('stTxt').textContent = 'recebendo · COM3'
+  $('gViso').innerHTML = d.viso.toFixed(2) + ' <small>mm/s</small>'
+  const z = zone(d.viso)
+  $('gZone').textContent = z.t; $('gZone').style.background = z.c
+  const gTot = Math.sqrt(d.mean[0] ** 2 + d.mean[1] ** 2 + d.mean[2] ** 2) / 1000
+  $('gG').textContent = gTot.toFixed(3)
+  $('gDom').textContent = 'XYZ'[d.dom]
+  $('gFs').innerHTML = d.fs.toFixed(0) + ' <small>Hz</small>'
+  $('gScale').innerHTML = '±' + d.scale + ' <small>g</small>'
+  $('gN').textContent = nCiclos
+  const rows = ['rx', 'ry', 'rz']
+  for (let a = 0; a < 3; a++) {
+    const tds = $(rows[a]).children
+    tds[1].textContent = d.mean[a].toFixed(1)
+    tds[2].textContent = d.rms[a].toFixed(2)
+    tds[3].textContent = d.peak[a].toFixed(1)
+    tds[4].textContent = d.rms[a] > 0.01 ? (d.peak[a] / d.rms[a]).toFixed(1) : '—'
+  }
+  hist.push(d.viso)
+  if (hist.length > 120) hist.shift()
+  drawWave(d); drawFft(d); drawTrend()
+}
+</script>
+</body>
+</html>
