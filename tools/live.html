@@ -42,6 +42,27 @@
   canvas { width: 100%; border-radius: 10px; border: 1px solid var(--navy); background: #06070c; display: block; }
   .foot { color: var(--txt2); font-size: 11.5px; margin-top: 14px; line-height: 1.55; }
   .foot b { color: var(--navy); }
+
+  /* ---- gravador de padrões ---- */
+  .recCard { border: 1px solid var(--navy); border-radius: 12px; padding: 16px 18px; margin-top: 18px; background: var(--panel2); }
+  .recTop { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .recTop label { font-size: 10.5px; letter-spacing: .14em; font-weight: 700; color: var(--txt2); }
+  .recTop input { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 14px;
+                  font-family: var(--sans); width: 280px; color: var(--navy); }
+  .recTop input.need { border-color: var(--crit); background: #fef2f2; }
+  .recTop .recSt { font-size: 12px; font-weight: 600; color: var(--txt2); margin-left: auto; }
+  .recTop .recSt.on { color: var(--crit); animation: pulse 1s infinite; }
+  .pgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+  .pbtn { text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 10px;
+          padding: 10px 13px; cursor: pointer; font-family: var(--sans); transition: .15s; }
+  .pbtn:hover { border-color: var(--navy); }
+  .pbtn .pt { font-size: 13px; font-weight: 700; color: var(--navy); }
+  .pbtn .ps { font-size: 11px; color: var(--txt2); margin-top: 2px; }
+  .pbtn.done { border-color: var(--ok); background: #f0fdf4; }
+  .pbtn.done .ps { color: var(--ok); font-weight: 600; }
+  .pbtn.recing { border-color: var(--crit); background: #fef2f2; animation: pulse 1s infinite; }
+  .pbtn.recing .ps { color: var(--crit); font-weight: 700; }
+  .pbtn:disabled { opacity: .45; cursor: default; }
 </style>
 </head>
 <body>
@@ -67,6 +88,16 @@
   </div>
   <div class="view"><div class="cap">Espectro da máquina · mediana de Welch com exclusão de impactos — pancada não vira raia</div><canvas id="cvFft" width="1140" height="240"></canvas></div>
   <div class="view"><div class="cap">Tendência · <span style="color:#60a5fa">■</span> máquina (mm/s) · <span style="color:#f59e0b">■</span> movimento (mg) · <span style="color:#ef4444">●</span> impactos</div><canvas id="cvTrend" width="1140" height="140"></canvas></div>
+  <div class="recCard">
+    <div class="recTop">
+      <div>
+        <label>GRAVADOR DE PADRÕES · MODELO DO MOTOR</label><br>
+        <input id="recEngine" placeholder="ex.: Mercruiser 4.5L 250hp · barco Fenix 290" autocomplete="off">
+      </div>
+      <span class="recSt" id="recSt">pronto — clique num padrão para gravar 12 ciclos (~18 s)</span>
+    </div>
+    <div class="pgrid" id="pgrid"></div>
+  </div>
   <p class="foot"><b>O modelo:</b> o acelerômetro mede tudo somado — gravidade girando (atitude), aceleração de navegação, pancadas de mar e a vibração do sistema propulsivo. A separação é por assinatura física: gravidade &lt;0,4 Hz · movimento 0,4–8 Hz · impacto = transiente localizado no tempo (RMS do bloco ≫ mediana) · máquina = raias estacionárias &gt;8 Hz, medidas por mediana de janelas excluindo as que contêm impacto. <b>Teste:</b> deixe parado (zona A) → mexa o celular no ar (MOVIMENTO sobe, máquina fica) → dê batidas (IMPACTOS contam, espectro não contamina) → encoste num motor/vibracall (raias aparecem e o RMS da máquina sobe). A escala ±g se ajusta sozinha às pancadas.</p>
 </main>
 <script>
@@ -156,9 +187,81 @@ function drawTrend () {
   }
 }
 
+// ---------------------------- gravador de padrões ----------------------------
+let PATTERNS = {}, REC_TARGET = 12
+let recState = { active: false, pattern: null }
+const engineEl = $('recEngine')
+engineEl.value = localStorage.getItem('vibEngine') || ''
+engineEl.addEventListener('input', () => {
+  localStorage.setItem('vibEngine', engineEl.value)
+  engineEl.classList.remove('need')
+  refreshRecList()
+})
+
+function fmtStamp (s) {   // 20260722-103015 → 22/07 10:30
+  return s ? `${s.slice(6, 8)}/${s.slice(4, 6)} ${s.slice(9, 11)}:${s.slice(11, 13)}` : ''
+}
+
+async function refreshRecList () {
+  try {
+    const r = await (await fetch('/rec/list?engine=' + encodeURIComponent(engineEl.value))).json()
+    PATTERNS = r.patterns; REC_TARGET = r.target
+    const grid = $('pgrid')
+    grid.innerHTML = ''
+    for (const [id, label] of Object.entries(PATTERNS)) {
+      const b = document.createElement('button')
+      b.className = 'pbtn'
+      b.dataset.id = id
+      const done = r.recorded[id]
+      if (done) b.classList.add('done')
+      b.innerHTML = `<div class="pt">${label}</div>
+        <div class="ps">${done ? '✓ ' + done.count + ' gravação(ões) · última ' + fmtStamp(done.last) : 'não gravado'}</div>`
+      b.onclick = () => togglePattern(id, label)
+      grid.appendChild(b)
+    }
+    paintRecState()
+  } catch {}
+}
+
+async function togglePattern (id, label) {
+  if (recState.active && recState.pattern === id) {          // clicar de novo = cancela
+    await fetch('/rec/stop', { method: 'POST' })
+    return
+  }
+  if (recState.active) return
+  if (!engineEl.value.trim()) {
+    engineEl.classList.add('need'); engineEl.focus()
+    $('recSt').textContent = 'informe o MODELO DO MOTOR antes de gravar'
+    return
+  }
+  const r = await fetch('/rec/start', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pattern: id, engine: engineEl.value.trim() }),
+  })
+  if (!r.ok) { const e = await r.json(); $('recSt').textContent = 'erro: ' + e.error }
+}
+
+function paintRecState () {
+  document.querySelectorAll('.pbtn').forEach(b => {
+    b.classList.toggle('recing', recState.active && b.dataset.id === recState.pattern)
+    b.disabled = recState.active && b.dataset.id !== recState.pattern
+    if (recState.active && b.dataset.id === recState.pattern) {
+      b.querySelector('.ps').textContent = `● GRAVANDO ${recState.got}/${REC_TARGET} ciclos — clique p/ cancelar`
+    }
+  })
+  const st = $('recSt')
+  st.classList.toggle('on', recState.active)
+  st.textContent = recState.active
+    ? `GRAVANDO "${PATTERNS[recState.pattern]}" · ciclo ${recState.got}/${REC_TARGET}`
+    : 'pronto — clique num padrão para gravar 12 ciclos (~18 s)'
+}
+refreshRecList()
+
 const es = new EventSource('/events')
 es.onmessage = e => {
   const d = JSON.parse(e.data)
+  if (d.rec) { recState = d.rec; if (!recState.active) refreshRecList(); else paintRecState() }
+  if (d.recDone) { $('recSt').textContent = `✓ salvo: ${d.recDone.file} (${d.recDone.n} ciclos)`; refreshRecList() }
   if (d.status) { $('stTxt').textContent = d.status; $('st').classList.toggle('on', /conectado/.test(d.status)) }
   if (d.err) { $('stTxt').textContent = d.err; return }
   if (!d.vib || !d.decomp) return

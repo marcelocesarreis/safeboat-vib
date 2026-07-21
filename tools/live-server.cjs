@@ -201,6 +201,76 @@ function broadcast (obj) {
   clients = clients.filter(c => { try { c.write(msg); return true } catch { return false } })
 }
 
+// ------------------------- GRAVADOR DE PADRÕES (teste de mar) -------------
+// Grava N ciclos consecutivos (bruto + métricas) rotulados com o padrão
+// operacional e o modelo do motor. Arquivos em data/padroes/<motor>/ —
+// nunca sobrescreve: cada gravação ganha carimbo de hora.
+const REC_DIR = path.join(__dirname, '..', 'data', 'padroes')
+const PATTERNS = {
+  'desligado': 'Motor desligado',
+  'neutro-800': 'Lenta 800 rpm (neutro)',
+  'neutro-1200': '1200 rpm (neutro)',
+  'neutro-max': 'RPM máximo (neutro)',
+  'engatado-900': 'Engatado 900 rpm',
+  'engatado-1200': 'Engatado 1200 rpm',
+  'engatado-2000': 'Engatado 2000 rpm',
+  'engatado-max': 'Engatado máximo',
+}
+const REC_N = 12                 // ciclos por padrão (~18 s de dados)
+let rec = { active: false, pattern: null, engine: '', got: 0, cycles: [] , startedAt: 0 }
+
+function slugify (s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'motor'
+}
+function stamp () {
+  const d = new Date()
+  const p = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
+}
+function recStatus () {
+  return { rec: { active: rec.active, pattern: rec.pattern, got: rec.got, target: REC_N, engine: rec.engine } }
+}
+function saveRec () {
+  const dir = path.join(REC_DIR, slugify(rec.engine))
+  fs.mkdirSync(dir, { recursive: true })
+  const file = path.join(dir, `${rec.pattern}_${stamp()}.json`)
+  fs.writeFileSync(file, JSON.stringify({
+    engine: rec.engine, pattern: rec.pattern, label: PATTERNS[rec.pattern],
+    startedAt: rec.startedAt, savedAt: Date.now(), n: rec.cycles.length, cycles: rec.cycles,
+  }))
+  console.log(`padrão salvo: ${file} (${rec.cycles.length} ciclos)`)
+  broadcast({ recDone: { pattern: rec.pattern, file: path.basename(file), n: rec.cycles.length } })
+}
+function recFeed (raw, processed) {
+  if (!rec.active) return
+  rec.cycles.push({
+    t: Date.now(),
+    raw: { fs: raw.fs, ovr: raw.ovr, scale: raw.scale, sens: raw.sens, clip: raw.clip || 0, bus: raw.bus || 400, x: raw.x, y: raw.y, z: raw.z },
+    metrics: {
+      viso: processed.viso, quality: processed.quality, gmag: processed.gmag, tilt: processed.tilt,
+      dom: processed.dom, motion: processed.motion, impacts: processed.impacts, machine: processed.machine,
+    },
+  })
+  rec.got = rec.cycles.length
+  if (rec.got >= REC_N) { saveRec(); rec.active = false }
+  broadcast(recStatus())
+}
+function recList (engine) {
+  const dir = path.join(REC_DIR, slugify(engine))
+  const out = {}
+  if (fs.existsSync(dir)) {
+    for (const f of fs.readdirSync(dir)) {
+      const m = f.match(/^(.+)_(\d{8}-\d{6})\.json$/)
+      if (!m || !PATTERNS[m[1]]) continue
+      if (!out[m[1]]) out[m[1]] = { count: 0, last: '' }
+      out[m[1]].count++
+      if (m[2] > out[m[1]].last) out[m[1]].last = m[2]
+    }
+  }
+  return out
+}
+
 // ---------------------------------------------------------- ponte serial
 function startBridge () {
   const ps = `
@@ -234,6 +304,7 @@ try {
           last = processRaw(raw)          // FFT + análise no PC
           last.status = status
           broadcast(last)
+          recFeed(raw, last)              // gravador de padrões (se ativo)
         } catch {}
       } else if (line.startsWith('{"vib"')) {
         try { last = JSON.parse(line); last.status = status; broadcast(last) } catch {}
@@ -269,9 +340,11 @@ function startSim () {
       z.push(Math.round(az / sens))
     }
     t0 += N / fs + 0.15
-    last = processRaw({ x, y, z, fs, sens, ovr: 0, scale: 4, clip: 0 })
+    const raw = { x, y, z, fs, sens, ovr: 0, scale: 4, clip: 0 }
+    last = processRaw(raw)
     last.status = status
     broadcast(last)
+    recFeed(raw, last)
   }, 1400)
 }
 
@@ -285,6 +358,37 @@ else startBridge()
 // ------------------------------------------------------------- HTTP + SSE
 http.createServer((req, res) => {
   const url = req.url.split('?')[0]
+  // ---- gravador de padrões ----
+  if (url === '/rec/start' && req.method === 'POST') {
+    let body = ''
+    req.on('data', d => body += d)
+    req.on('end', () => {
+      try {
+        const { pattern, engine } = JSON.parse(body)
+        if (!PATTERNS[pattern]) throw new Error('padrão inválido')
+        if (!engine || !engine.trim()) throw new Error('informe o modelo do motor')
+        rec = { active: true, pattern, engine: engine.trim(), got: 0, cycles: [], startedAt: Date.now() }
+        broadcast(recStatus())
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(recStatus()))
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: e.message }))
+      }
+    })
+    return
+  }
+  if (url === '/rec/stop' && req.method === 'POST') {
+    rec.active = false
+    broadcast(recStatus())
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    return res.end(JSON.stringify(recStatus()))
+  }
+  if (url === '/rec/list') {
+    const q = new URLSearchParams(req.url.split('?')[1] || '')
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    return res.end(JSON.stringify({ patterns: PATTERNS, recorded: recList(q.get('engine') || ''), target: REC_N }))
+  }
   if (url === '/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
     res.write(`data: ${JSON.stringify({ status })}\n\n`)
