@@ -51,6 +51,15 @@ Chip chip = NONE;
 uint8_t lisAddr = 0;
 float odrHz = 1600;
 uint8_t fsIdx = 1;            // 0..3 → ±2/±4/±8/±16 g
+// escada de velocidade (v0.8): contato fraco no barco vibrando → desce o
+// clock do barramento (e o ODR junto, p/ caber na banda); estável → sobe.
+// 50 kHz / 400 Hz ainda cobre 1× e 2× de qualquer motor marítimo.
+// tier 0..2 = periférico Wire · tier 3 = I²C bit-bang 25 kHz (emergência)
+const uint32_t BUS_KHZ[4] = { 400, 100, 50, 25 };
+const uint8_t ODR3DSH_CFG[4] = { 0x9F, 0x8F, 0x7F, 0x6F };  // 1600/800/400/100 Hz
+const float ODR3DSH_HZ[4] = { 1600, 800, 400, 100 };
+uint8_t tier = 0;
+uint8_t ctrl4Cfg = 0x9F;
 // sensibilidade mg/dígito por escala:
 const float SENS_3DSH[4] = { 0.06f, 0.12f, 0.24f, 0.73f };   // 16 bits
 const float SENS_3DH[4]  = { 1.0f, 2.0f, 4.0f, 8.0f };       // 12 bits (>>4)
@@ -122,6 +131,66 @@ bool probeSPI (uint8_t scl, uint8_t sda) {
   PIN_SCL = oldScl; PIN_SDA = oldSda;
   pinMode(scl, INPUT); pinMode(sda, INPUT);
   return false;
+}
+
+// --------------------------- I²C bit-bang COMPLETO (v0.8 · modo emergência)
+// Quando o periférico Wire não sustenta transação nem a 50 kHz mas o chip
+// dá ACK, rodamos o barramento inteiro por software a ~25 kHz: timing
+// folgado, tolerante a contato resistivo. ODR cai p/ 100 Hz (banda 50 Hz —
+// ainda pega 1× de motor até 3000 rpm).
+bool useBB = false;
+#define BB_T 18                              // meia-onda ~18 µs (~25 kHz)
+static void bbSDA (bool v) { digitalWrite(PIN_SDA, v); }
+static void bbSCL (bool v) { digitalWrite(PIN_SCL, v); if (v) { for (int k = 0; k < 40 && !digitalRead(PIN_SCL); k++) delayMicroseconds(2); } }
+static void bbInitPins () {
+  pinMode(PIN_SDA, OUTPUT_OPEN_DRAIN); gpio_pullup_en((gpio_num_t)PIN_SDA);
+  pinMode(PIN_SCL, OUTPUT_OPEN_DRAIN); gpio_pullup_en((gpio_num_t)PIN_SCL);
+  bbSDA(1); bbSCL(1); delayMicroseconds(BB_T);
+}
+static void bbStart () { bbSDA(1); bbSCL(1); delayMicroseconds(BB_T); bbSDA(0); delayMicroseconds(BB_T); bbSCL(0); delayMicroseconds(BB_T); }
+static void bbStop () { bbSDA(0); delayMicroseconds(BB_T); bbSCL(1); delayMicroseconds(BB_T); bbSDA(1); delayMicroseconds(BB_T); }
+static bool bbWriteByte (uint8_t b) {
+  for (int i = 7; i >= 0; i--) {
+    bbSDA((b >> i) & 1); delayMicroseconds(BB_T / 2);
+    bbSCL(1); delayMicroseconds(BB_T); bbSCL(0); delayMicroseconds(BB_T / 2);
+  }
+  bbSDA(1); delayMicroseconds(BB_T / 2);
+  bbSCL(1); delayMicroseconds(BB_T / 2);
+  bool ack = !digitalRead(PIN_SDA);
+  delayMicroseconds(BB_T / 2);
+  bbSCL(0); delayMicroseconds(BB_T / 2);
+  return ack;
+}
+static uint8_t bbReadByte (bool ack) {
+  uint8_t v = 0;
+  bbSDA(1);
+  for (int i = 0; i < 8; i++) {
+    delayMicroseconds(BB_T / 2);
+    bbSCL(1); delayMicroseconds(BB_T / 2);
+    v = (v << 1) | digitalRead(PIN_SDA);
+    delayMicroseconds(BB_T / 2);
+    bbSCL(0);
+  }
+  bbSDA(ack ? 0 : 1); delayMicroseconds(BB_T / 2);
+  bbSCL(1); delayMicroseconds(BB_T); bbSCL(0);
+  bbSDA(1); delayMicroseconds(BB_T / 2);
+  return v;
+}
+bool bbRdN (uint8_t addr, uint8_t reg, uint8_t *buf, uint8_t n) {
+  bbStart();
+  if (!bbWriteByte(addr << 1)) { bbStop(); return false; }
+  if (!bbWriteByte(reg)) { bbStop(); return false; }
+  bbStart();                                 // repeated start
+  if (!bbWriteByte((addr << 1) | 1)) { bbStop(); return false; }
+  for (uint8_t i = 0; i < n; i++) buf[i] = bbReadByte(i < n - 1);
+  bbStop();
+  return true;
+}
+bool bbWr8i (uint8_t addr, uint8_t reg, uint8_t val) {
+  bbStart();
+  bool ok = bbWriteByte(addr << 1) && bbWriteByte(reg) && bbWriteByte(val);
+  bbStop();
+  return ok;
 }
 
 // -------------------------------------------- sonda I²C bit-bang (v0.5)
@@ -204,6 +273,13 @@ bool findWiring () {
 // pulsos de SCL p/ o escravo despejar o byte pendente + condição de STOP.
 void busClear () {
   if (useSPI) return;                      // SPI bit-bang: nada a destravar
+  if (tier == 3) {                         // modo bit-bang: pulsos manuais + pinos nossos
+    Wire.end();
+    bbInitPins();
+    for (int i = 0; i < 9; i++) { bbSCL(0); delayMicroseconds(BB_T); bbSCL(1); delayMicroseconds(BB_T); }
+    bbStop();
+    return;
+  }
   Wire.end();
   pinMode(PIN_SDA, INPUT_PULLUP);
   pinMode(PIN_SCL, INPUT_PULLUP);
@@ -220,24 +296,26 @@ void busClear () {
     digitalWrite(PIN_SCL, HIGH); delayMicroseconds(6);
     digitalWrite(PIN_SDA, HIGH); delayMicroseconds(6);
   }
-  Wire.begin(PIN_SDA, PIN_SCL, 400000);
+  Wire.begin(PIN_SDA, PIN_SCL, BUS_KHZ[tier] * 1000);
 }
 // saúde do sensor: identidade E configuração. Se o módulo piscar a
 // alimentação (jumper frouxo), o WHO_AM_I volta a responder mas os CTRL
 // voltam ao padrão de fábrica (ODR desligado) — a FIFO nunca mais enche.
 bool lisAlive () {
   uint8_t id = rd8(REG_WHO_AM_I);
-  if (chip == LIS3DSH) return id == 0x3F && rd8(0x20) == 0x9F;
-  return id == 0x33 && rd8(0x20) == 0x97;
+  if (chip == LIS3DSH) return id == 0x3F && rd8(0x20) == ctrl4Cfg;
+  return id == 0x33 && rd8(0x20) == ctrl4Cfg;
 }
 
 uint8_t rd8 (uint8_t reg) {
+  if (useBB) { uint8_t v = 0xFF; bbRdN(lisAddr, reg, &v, 1); return v; }
   if (useSPI) return spiRd8(reg);
   Wire.beginTransmission(lisAddr); Wire.write(reg); Wire.endTransmission(false);
   Wire.requestFrom(lisAddr, (uint8_t)1);
   return Wire.read();
 }
 void wr8 (uint8_t reg, uint8_t val) {
+  if (useBB) { bbWr8i(lisAddr, reg, val); return; }
   if (useSPI) {
     if (reg == 0x24) val |= 0x01;          // CTRL5: nunca derrubar o SIM (3 fios)
     spiWr8(reg, val);
@@ -247,7 +325,9 @@ void wr8 (uint8_t reg, uint8_t val) {
 }
 void rdSample (int16_t &x, int16_t &y, int16_t &z) {
   uint8_t b[6];
-  if (useSPI) {
+  if (useBB) {
+    if (!bbRdN(lisAddr, REG_OUT_X_L, b, 6)) { x = y = z = 0; return; }
+  } else if (useSPI) {
     spiRdN(REG_OUT_X_L, b, 6);             // ADD_INC (CTRL6) vale p/ SPI também
   } else {
     uint8_t sub = REG_OUT_X_L | (chip == LIS3DH ? AUTO_INC : 0);
@@ -270,8 +350,21 @@ void applyScale () {
   }
 }
 bool lisInit () {
+  useBB = (tier == 3);                     // tier 3 = barramento inteiro por software
   if (useSPI) {
     chip = (spiRd8(REG_WHO_AM_I) == 0x3F) ? LIS3DSH : NONE;
+    if (chip == NONE) return false;
+  } else if (useBB) {
+    Wire.end();
+    bbInitPins();
+    chip = NONE;
+    for (uint8_t a : CAND_ADDRS) {
+      uint8_t id = 0xFF;
+      if (bbRdN(a, REG_WHO_AM_I, &id, 1)) {
+        if (id == 0x3F) { lisAddr = a; chip = LIS3DSH; break; }
+        if (id == 0x33) { lisAddr = a; chip = LIS3DH; break; }
+      }
+    }
     if (chip == NONE) return false;
   } else {
     chip = NONE;
@@ -290,14 +383,16 @@ bool lisInit () {
   }
 
   if (chip == LIS3DSH) {
-    odrHz = 1600;
-    wr8(0x20, 0x9F);                        // CTRL4: ODR=1001 (1600 Hz) · BDU · XYZ
+    odrHz = ODR3DSH_HZ[tier];
+    ctrl4Cfg = ODR3DSH_CFG[tier];
+    wr8(0x20, ctrl4Cfg);                    // CTRL4: ODR do tier · BDU · XYZ
     applyScale();                           // CTRL5
     wr8(0x25, 0x50);                        // CTRL6: FIFO_EN + ADD_INC
     wr8(0x2E, 0x40);                        // FIFO stream mode
   } else {
-    odrHz = 1344;
-    wr8(0x20, 0x97);                        // CTRL1: ODR 1,344 kHz · XYZ
+    odrHz = useBB ? 100 : 1344;
+    ctrl4Cfg = useBB ? 0x57 : 0x97;
+    wr8(0x20, ctrl4Cfg);                    // CTRL1: ODR · XYZ
     applyScale();                           // CTRL4
     wr8(0x24, 0x40);                        // CTRL5: FIFO enable
     wr8(0x2E, 0x80);                        // FIFO stream mode
@@ -438,8 +533,17 @@ void monitorCycle () {
   // 5 falhas seguidas = recuperação suave não resolveu (driver I²C pode ter
   // travado): reinício LIMPO do ESP — boot sempre funciona.
   static uint8_t falhas = 0;
-  if (falhas >= 5) {
-    Serial.println("{\"vib\":0,\"err\":\"5 falhas seguidas — reiniciando o ESP para comecar limpo\"}");
+  static uint16_t limpos = 0;
+  if (falhas == 2 && tier < 3) {             // 2 falhas: desce a escada antes de
+    tier++;                                  // partir p/ medidas drásticas
+    Serial.printf("{\"vib\":0,\"err\":\"link instavel — descendo p/ I2C %lu kHz / ODR %.0f Hz\"}\n",
+      (unsigned long)BUS_KHZ[tier], ODR3DSH_HZ[tier]);
+    busClear(); delay(20); lisInit();
+    falhas++;                                // não repete o degrau na mesma sequência
+    return;
+  }
+  if (falhas >= 6) {
+    Serial.println("{\"vib\":0,\"err\":\"falhas repetidas — reiniciando o ESP para comecar limpo\"}");
     Serial.flush(); delay(200);
     ESP.restart();
   }
@@ -464,6 +568,13 @@ void monitorCycle () {
     return;
   }
   falhas = 0;
+  if (++limpos >= 20 && tier > 0) {          // 20 ciclos limpos: tenta subir a escada
+    tier--; limpos = 0;
+    Serial.printf("{\"vib\":0,\"err\":\"link estavel — subindo p/ I2C %lu kHz / ODR %.0f Hz\"}\n",
+      (unsigned long)BUS_KHZ[tier], ODR3DSH_HZ[tier]);
+    busClear(); delay(20); lisInit();
+    return;
+  }
 
   // ---- auto-range (v0.7): movimento/impacto satura a escala e corrompe a
   // análise. Estourou → sobe a escala e descarta a rajada; folga grande por
@@ -490,8 +601,8 @@ void monitorCycle () {
       Serial.printf("{\"vib\":0,\"err\":\"auto-range: folga — descendo para ±%d g\"}\n", 2 << fsIdx); return; }
   } else folga = 0;
 
-  Serial.printf("{\"raw\":1,\"fs\":%.1f,\"ovr\":%d,\"scale\":%d,\"sens\":%.4f,\"clip\":%d",
-    N_BURST / dt, ovr ? 1 : 0, 2 << fsIdx, mgPerDig(), nClip);
+  Serial.printf("{\"raw\":1,\"fs\":%.1f,\"ovr\":%d,\"scale\":%d,\"sens\":%.4f,\"clip\":%d,\"bus\":%lu",
+    N_BURST / dt, ovr ? 1 : 0, 2 << fsIdx, mgPerDig(), nClip, (unsigned long)BUS_KHZ[tier]);
   const char *k[3] = { ",\"x\":[", ",\"y\":[", ",\"z\":[" };
   int16_t *axes[3] = { bx, by, bz };
   for (int a = 0; a < 3; a++) {
@@ -619,7 +730,9 @@ void loop () {
         printInfo();
         bootT = millis(); cmdSeen = false;
       } else if (achou) {
-        Serial.printf("{\"vib\":0,\"err\":\"ACK em SDA=%d/SCL=%d mas WHO_AM_I nao respondeu — contato fraco\"}\n", PIN_SDA, PIN_SCL);
+        if (tier < 3) tier++;                // contato fraco: desce a escada (3 = bit-bang)
+        Serial.printf("{\"vib\":0,\"err\":\"ACK em SDA=%d/SCL=%d mas link nao sustenta — descendo p/ I2C %lu kHz\"}\n",
+          PIN_SDA, PIN_SCL, (unsigned long)BUS_KHZ[tier]);
       } else {
         Serial.println("{\"vib\":0,\"err\":\"sonda nao achou o sensor em nenhum par de pinos — VCC/GND?\"}");
         static uint8_t nScan = 0;

@@ -174,7 +174,7 @@ es.onmessage = e => {
   $('gG').textContent = d.gmag.toFixed(3)
   $('gTilt').textContent = 'inclinação ' + d.tilt.toFixed(0) + '° · eixo ' + 'XYZ'[d.dom]
   $('gFs').innerHTML = d.fs.toFixed(0) + ' <small>Hz</small>'
-  $('gScale').textContent = '±' + d.scale + ' g' + (d.clip ? ' · SATUROU (' + d.clip + ')' : '')
+  $('gScale').textContent = '±' + d.scale + ' g · I²C ' + (d.bus || 400) + ' kHz' + (d.clip ? ' · SATUROU' : '')
   $('gQual').textContent = (d.quality * 100).toFixed(0) + '%'
   $('gN').textContent = nCiclos + ' ciclos'
   hist.push({ viso: d.viso, mov: d.motion.rms, imp: d.impacts.n })

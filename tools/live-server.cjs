@@ -166,7 +166,7 @@ function processRaw (d) {
   const mean = grav.map(v => +(v * 1000).toFixed(1))
   const rms = rmsDyn.map(v => +(v * 1000).toFixed(2))
   return {
-    vib: 1, fftpc: 1, decomp: 1, fs: d.fs, ovr: d.ovr, scale: d.scale, clip: d.clip || 0, dom,
+    vib: 1, fftpc: 1, decomp: 1, fs: d.fs, ovr: d.ovr, scale: d.scale, clip: d.clip || 0, bus: d.bus || 400, dom,
     viso: +Math.sqrt(sumV2).toFixed(3), res: +df.toFixed(2), quality: +quality.toFixed(2),
     gmag: +gmag.toFixed(3), tilt: +tilt.toFixed(1),
     motion: { rms: +(motR * 1000).toFixed(1), peak: +(motP * 1000).toFixed(0) },
