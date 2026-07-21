@@ -56,41 +56,123 @@ function fftMag (vals) {
   return mag
 }
 
+function median (arr) {
+  const s = [...arr].sort((a, b) => a - b)
+  const m = s.length >> 1
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
+}
+
+// ================== DECOMPOSIÇÃO DINÂMICA (o modelo do produto) ==========
+// O acelerômetro num barco navegando mede TUDO somado: gravidade girando
+// (atitude), aceleração de manobra, pancadas de mar e a vibração da máquina.
+// Separação por assinatura física:
+//   gravidade  → passa-baixa 0,4 Hz por eixo (vetor g rastreado)
+//   movimento  → banda 0,4–8 Hz do resíduo (navegação/manobra/mão)
+//   impactos   → transientes: sub-blocos com RMS ≫ mediana dos vizinhos
+//   máquina    → >8 Hz, espectro por MEDIANA DE WELCH (8 janelas de 512):
+//                a pancada contamina 1–2 janelas, a mediana as ignora;
+//                as raias do motor (1×, 2×…) estão em todas e sobrevivem.
 function processRaw (d) {
   const N = d.x.length
+  const fs = d.fs
+  const toG = d.sens * 0.001                 // dígito → g
   const axes = [d.x, d.y, d.z]
-  const mean = [], rms = [], peak = []
-  let dom = 0
+
+  // ---- gravidade por eixo (LP 0,4 Hz, inicializado na média) + resíduo ----
+  const aG = 1 - Math.exp(-2 * Math.PI * 0.4 / fs)
+  const grav = [], dyn = [], rmsDyn = []
   for (let a = 0; a < 3; a++) {
     let m = 0
     for (const v of axes[a]) m += v
     m /= N
-    let r = 0, p = 0
-    for (const v of axes[a]) { const dd = v - m; r += dd * dd; if (Math.abs(dd) > p) p = Math.abs(dd) }
-    mean.push(m * d.sens); rms.push(Math.sqrt(r / N) * d.sens); peak.push(p * d.sens)
-    if (rms[a] > rms[dom]) dom = a
+    let g = m
+    const dd = new Float64Array(N)
+    for (let i = 0; i < N; i++) { g += aG * (axes[a][i] - g); dd[i] = (axes[a][i] - g) * toG }
+    grav.push(m * toG)
+    let r = 0
+    for (const v of dd) r += v * v
+    rmsDyn.push(Math.sqrt(r / N))
+    dyn.push(dd)
   }
-  // FFT do eixo dominante em g, resolução cheia (df = fs/N pela taxa medida)
-  const mDom = mean[dom] / d.sens
-  const sig = axes[dom].map(v => (v - mDom) * d.sens * 0.001)
-  const mag = fftMag(sig)
-  const df = d.fs / N
+  const dom = rmsDyn.indexOf(Math.max(...rmsDyn))
+  const gmag = Math.hypot(grav[0], grav[1], grav[2])
+  const tilt = Math.acos(Math.min(1, Math.abs(grav[2]) / (gmag || 1))) * 180 / Math.PI
+
+  // ---- movimento (0,4–8 Hz) × máquina (>8 Hz), 2 polos ----
+  const s = dyn[dom]
+  const aM = 1 - Math.exp(-2 * Math.PI * 8 / fs)
+  let l1 = 0, l2 = 0
+  const mot = new Float64Array(N), mach = new Float64Array(N)
+  for (let i = 0; i < N; i++) {
+    l1 += aM * (s[i] - l1); l2 += aM * (l1 - l2)
+    mot[i] = l2; mach[i] = s[i] - l2
+  }
+  let motR = 0, motP = 0
+  for (const v of mot) { motR += v * v; if (Math.abs(v) > motP) motP = Math.abs(v) }
+  motR = Math.sqrt(motR / N)
+
+  // ---- impactos: 16 sub-blocos de 128; transiente = RMS ≫ mediana ----
+  const NB = 16, BL = Math.floor(N / NB)
+  const bRms = [], bPeak = []
+  for (let b = 0; b < NB; b++) {
+    let r = 0, p = 0
+    for (let i = b * BL; i < (b + 1) * BL; i++) { r += mach[i] * mach[i]; if (Math.abs(mach[i]) > p) p = Math.abs(mach[i]) }
+    bRms.push(Math.sqrt(r / BL)); bPeak.push(p)
+  }
+  const medR = median(bRms) || 1e-9
+  const impactMask = bRms.map((r, b) => (r > 3 * medR && bPeak[b] > 5 * medR) ? 1 : 0)
+  const nImp = impactMask.reduce((a, v) => a + v, 0)
+  let impPeak = 0
+  impactMask.forEach((f, b) => { if (f && bPeak[b] > impPeak) impPeak = bPeak[b] })
+
+  // ---- espectro da máquina: mediana de Welch (janelas 512, hop 256),
+  //      EXCLUINDO janelas que contêm impacto (se sobrarem ≥3 limpas) ----
+  const W = 512, HOP = 256
+  const wins = [], winClean = []
+  for (let k = 0; k + W <= N; k += HOP) {
+    const b0 = Math.floor(k / BL), b1 = Math.min(NB - 1, Math.floor((k + W - 1) / BL))
+    let clean = true
+    for (let b = b0; b <= b1; b++) if (impactMask[b]) clean = false
+    wins.push(fftMag(mach.slice(k, k + W)))
+    winClean.push(clean)
+  }
+  const useWins = winClean.filter(Boolean).length >= 3
+    ? wins.filter((_, k) => winClean[k]) : wins
+  const medSpec = new Float64Array(W / 2)
+  const col = new Float64Array(useWins.length)
+  for (let i = 0; i < W / 2; i++) {
+    for (let k = 0; k < useWins.length; k++) col[k] = useWins[k][i]
+    medSpec[i] = median(col)
+  }
+  const df = fs / W
   let sumV2 = 0
-  for (let i = Math.ceil(10 / df); i <= Math.min(mag.length - 1, Math.floor(500 / df)); i++) {
-    const v = mag[i] * 9810 / (2 * Math.PI * i * df) / Math.SQRT2
+  for (let i = Math.ceil(10 / df); i <= Math.min(W / 2 - 1, Math.floor(500 / df)); i++) {
+    const v = medSpec[i] * 9810 / (2 * Math.PI * i * df) / Math.SQRT2
     sumV2 += v * v
   }
-  // espectro p/ exibição: 1024 → 512 bins (máx de pares), em mg
+  sumV2 /= 1.5     // ENBW da janela Hann: integrar bins de espectro calibrado
+                   // em amplitude sobreconta a potência em 1,5×
+  const quality = 1 - nImp / NB              // fração de blocos limpos
+
+  // ---- saídas p/ o painel ----
   const fft = []
-  for (let i = 0; i < mag.length / 2; i++) fft.push(+(Math.max(mag[2 * i], mag[2 * i + 1]) * 1000).toFixed(2))
-  // forma de onda: 512 pts do eixo dominante, mg AC
-  const wave = []
-  for (let i = 0; i < 512; i++) wave.push(+((axes[dom][i * Math.floor(N / 512)] - mDom) * d.sens).toFixed(1))
+  for (let i = 0; i < W / 2; i++) fft.push(+(medSpec[i] * 1000).toFixed(2))
+  const step = Math.floor(N / 512)
+  const wave = [], waveMach = []
+  for (let i = 0; i < 512; i++) {
+    wave.push(+(s[i * step] * 1000).toFixed(1))
+    waveMach.push(+(mach[i * step] * 1000).toFixed(1))
+  }
+  const mean = grav.map(v => +(v * 1000).toFixed(1))
+  const rms = rmsDyn.map(v => +(v * 1000).toFixed(2))
   return {
-    vib: 1, fftpc: 1, fs: d.fs, ovr: d.ovr, scale: d.scale, dom,
-    viso: +Math.sqrt(sumV2).toFixed(3), res: +df.toFixed(3),
-    mean: mean.map(v => +v.toFixed(1)), rms: rms.map(v => +v.toFixed(2)), peak: peak.map(v => +v.toFixed(1)),
-    fft, wave,
+    vib: 1, fftpc: 1, decomp: 1, fs: d.fs, ovr: d.ovr, scale: d.scale, clip: d.clip || 0, dom,
+    viso: +Math.sqrt(sumV2).toFixed(3), res: +df.toFixed(2), quality: +quality.toFixed(2),
+    gmag: +gmag.toFixed(3), tilt: +tilt.toFixed(1),
+    motion: { rms: +(motR * 1000).toFixed(1), peak: +(motP * 1000).toFixed(0) },
+    impacts: { n: nImp, peak: +impPeak.toFixed(2) },
+    mean, rms, peak: bPeak.map(v => +(v * 1000).toFixed(0)),
+    impactMask, fft, wave, waveMach,
   }
 }
 
@@ -147,7 +229,38 @@ try {
   })
   process.on('exit', () => { try { child.kill() } catch {} })
 }
-startBridge()
+// ------------------------- modo simulação (VIB_SIM=1): embarcação sintética
+// Gera ciclos como os do sensor real — p/ demo do painel e testes sem hardware.
+function startSim () {
+  status = 'SIMULAÇÃO — embarcação sintética (sem hardware)'
+  let t0 = 0
+  setInterval(() => {
+    const fs = 1650, N = 2048, sens = 0.12
+    const x = [], y = [], z = []
+    const mar = 0.5 + 0.5 * Math.sin(t0 / 9)             // estado do mar oscila
+    for (let i = 0; i < N; i++) {
+      const t = t0 + i / fs
+      let az = 1000 + mar * 300 * Math.sin(2 * Math.PI * 1.2 * t)
+      az += 45 * Math.sin(2 * Math.PI * 30 * t) + 18 * Math.sin(2 * Math.PI * 60 * t)
+      if (mar > 0.6 && (t % 4) < 0.03) az += 1800 * Math.exp(-((t % 4)) * 150) * Math.sin(2 * Math.PI * 420 * t)
+      az += (Math.random() * 2 - 1) * 6
+      x.push(Math.round((25 * Math.sin(2 * Math.PI * 30 * t + 1) + (Math.random() * 2 - 1) * 6) / sens))
+      y.push(Math.round((mar * 120 * Math.sin(2 * Math.PI * 1.2 * t + 2) + (Math.random() * 2 - 1) * 6) / sens))
+      z.push(Math.round(az / sens))
+    }
+    t0 += N / fs + 0.15
+    last = processRaw({ x, y, z, fs, sens, ovr: 0, scale: 4, clip: 0 })
+    last.status = status
+    broadcast(last)
+  }, 1400)
+}
+
+// exporta o motor p/ testes (tools/test-decomp.cjs) sem subir o servidor
+module.exports = { processRaw, fftMag }
+if (require.main !== module) return
+
+if (process.env.VIB_SIM === '1') startSim()
+else startBridge()
 
 // ------------------------------------------------------------- HTTP + SSE
 http.createServer((req, res) => {

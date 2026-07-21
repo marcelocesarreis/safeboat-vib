@@ -464,8 +464,34 @@ void monitorCycle () {
     return;
   }
   falhas = 0;
-  Serial.printf("{\"raw\":1,\"fs\":%.1f,\"ovr\":%d,\"scale\":%d,\"sens\":%.4f",
-    N_BURST / dt, ovr ? 1 : 0, 2 << fsIdx, mgPerDig());
+
+  // ---- auto-range (v0.7): movimento/impacto satura a escala e corrompe a
+  // análise. Estourou → sobe a escala e descarta a rajada; folga grande por
+  // várias rajadas → desce (histerese). O mar decide a escala, não a gente.
+  const int32_t fullDig = (chip == LIS3DH) ? 2047 : 32767;
+  const int32_t clipLim = (int32_t)(fullDig * 0.95f);
+  int nClip = 0; int32_t peakDig = 0;
+  int16_t *ax3[3] = { bx, by, bz };
+  for (int a = 0; a < 3; a++) {
+    for (int i = 0; i < N_BURST; i++) {
+      int32_t v = abs((int32_t)ax3[a][i]);
+      if (v > clipLim) nClip++;
+      if (v > peakDig) peakDig = v;
+    }
+  }
+  static uint8_t folga = 0;
+  if (nClip > 8 && fsIdx < 3) {
+    fsIdx++; applyScale(); folga = 0;
+    Serial.printf("{\"vib\":0,\"err\":\"auto-range: saturou (%d am.) — subindo para ±%d g\"}\n", nClip, 2 << fsIdx);
+    return;                                  // rajada saturada não vira análise
+  }
+  if (peakDig < fullDig / 6 && fsIdx > 0) {  // pico < ~17% do fundo de escala
+    if (++folga >= 8) { fsIdx--; applyScale(); folga = 0;
+      Serial.printf("{\"vib\":0,\"err\":\"auto-range: folga — descendo para ±%d g\"}\n", 2 << fsIdx); return; }
+  } else folga = 0;
+
+  Serial.printf("{\"raw\":1,\"fs\":%.1f,\"ovr\":%d,\"scale\":%d,\"sens\":%.4f,\"clip\":%d",
+    N_BURST / dt, ovr ? 1 : 0, 2 << fsIdx, mgPerDig(), nClip);
   const char *k[3] = { ",\"x\":[", ",\"y\":[", ",\"z\":[" };
   int16_t *axes[3] = { bx, by, bz };
   for (int a = 0; a < 3; a++) {
