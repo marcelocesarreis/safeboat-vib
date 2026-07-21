@@ -491,7 +491,7 @@
     <span><i style="background:#a16207"></i>limitador / reed</span>
     <span><i style="background:#5b6270"></i>GND</span>
   </div>
-  <div class="note"><b>Três decisões que definem o circuito:</b> ① o ESP32-C3 é alimentado <b>pelo pino 3V3</b>, direto do trilho do supercap — o LDO da SuperMini fica fora do caminho (economiza o quiescente) e o USB-C segue funcionando na bancada; ② o divisor R2/R3 de 1 MΩ dá leitura de Vcap com consumo de 1,5 µA — o firmware só transmite com Vcap ≥ 2,9 V; ③ o INT1 do LIS3DSH acorda o ESP em <b>impacto forte</b> (wake-on-motion): um evento anômalo fura a fila e é reportado na hora, não na próxima janela.</div>
+  <div class="note"><b>Três decisões que definem o circuito:</b> ① o ESP32-C3 é alimentado <b>pelo pino 3V3</b>, direto do trilho do supercap — o LDO da SuperMini fica fora do caminho (economiza o quiescente) e o USB-C segue funcionando na bancada; ② o divisor R2/R3 de 1 MΩ dá leitura de Vcap com consumo de 1,5 µA — o firmware só transmite com Vcap ≥ 2,9 V; ③ o INT1 do LIS3DSH acorda o ESP em <b>impacto forte</b> (wake-on-motion): um evento anômalo fura a fila e é reportado na hora, não na próxima janela; ④ <b>I²C de baixa impedância</b>: pull-ups de 2,2 kΩ e chicote curto/trançado — linha de alta impedância vira antena de campo elétrico (aprendido em bancada: a proximidade do corpo derrubava o barramento por acoplamento capacitivo).</div>
   <div class="note warn"><b>Firmware — brownout em 2,55 V:</b> o trilho afunda durante a rajada Wi-Fi (ESR do supercap); com o detector padrão em 2,7 V o rádio reiniciaria no meio da transmissão. Ajustar <code>CONFIG_ESP_BROWNOUT_DET_LVL</code> e validar a rajada inteira no osciloscópio antes de fechar a case.</div>
 
   <div style="height:44px"></div>
@@ -519,6 +519,7 @@
     <tr><td>BT1</td><td>Célula CR2477</td><td>3 V / 1000 mAh, <em>com abas soldadas</em> (não usar suporte de pressão: vibração)</td><td>Energia média por ~12 meses</td><td>1</td><td>R$ 18</td></tr>
     <tr><td>C1</td><td>Banco de rajada (EDLC)</td><td>2× EDLC 2,7 V / 3,3 F Ø8×11,5 em série (1,65 F ef., ESR &lt; 0,5 Ω) — deitados no berço da bandeja</td><td>Reserva de pico da rajada Wi-Fi</td><td>2</td><td>R$ 10</td></tr>
     <tr><td>R5, R6</td><td>Resistores 1 MΩ</td><td>1/4 W 1%, um em paralelo com cada EDLC</td><td>Balanceamento da tensão do banco em série</td><td>2</td><td>R$ 0,20</td></tr>
+    <tr><td>R7, R8</td><td>Pull-ups I²C 2,2 kΩ</td><td>SDA→3V3 e SCL→3V3 (reforço dos fracos do módulo)</td><td>Imunidade a acoplamento capacitivo (campo E de corpo/cabos) — validado em bancada</td><td>2</td><td>R$ 0,20</td></tr>
     <tr><td>R1</td><td>Resistor 680 Ω</td><td>1/4 W 1%</td><td>Limita a recarga do supercap a ≤4 mA</td><td>1</td><td>R$ 0,10</td></tr>
     <tr><td>D1</td><td>Diodo Schottky</td><td>BAT60A (queda ~0,15 V) ou BAT85</td><td>Impede o supercap de descarregar na célula</td><td>1</td><td>R$ 0,50</td></tr>
     <tr><td>R2, R3</td><td>Resistores 1 MΩ</td><td>1/4 W 1%</td><td>Divisor de leitura de Vcap (GPIO0/ADC)</td><td>2</td><td>R$ 0,20</td></tr>
