@@ -26,10 +26,17 @@
  * Gravar:   arduino-cli upload -p COM3 --fqbn esp32:esp32:esp32c3:CDCOnBoot=cdc
  */
 #include <Wire.h>
+#include "driver/gpio.h"
 
 // ------------------------------------------------------------------ pinos
-#define PIN_SDA 8
-#define PIN_SCL 9
+// v0.5: os pinos NÃO são mais fixos — uma sonda I²C bit-bang varre todos os
+// pares de pinos expostos da SuperMini atrás de um ACK do acelerômetro
+// (acha o sensor mesmo com SDA/SCL trocados ou em outros pinos, e é imune
+// a travamento do driver Wire). 8/9 continuam sendo o par nominal.
+uint8_t PIN_SDA = 8;
+uint8_t PIN_SCL = 9;
+const uint8_t CAND_PINS[] = { 8, 9, 6, 7, 4, 5, 2, 3, 0, 1, 10, 20, 21 };  // 18/19 = USB, nunca
+const uint8_t CAND_ADDRS[] = { 0x18, 0x19, 0x1D, 0x1E };
 
 // ---------------------------------------------------- registradores comuns ST
 #define REG_WHO_AM_I   0x0F
@@ -62,12 +69,141 @@ float re[N_BURST], im[N_BURST];
 
 float mgPerDig () { return chip == LIS3DSH ? SENS_3DSH[fsIdx] : SENS_3DH[fsIdx]; }
 
+// ------------------------------------- transporte SPI 3 fios bit-bang (v0.6)
+// Se o pino CS do módulo estiver em GND, o LIS3DSH entra em modo SPI e
+// NUNCA responde I²C — com fiação perfeita. Solução: falar SPI nos mesmos
+// dois fios (SCL→SPC/SCK, SDA→SDI). Escrevemos SIM=1 (CTRL5) às cegas em
+// 4 fios e passamos a ler em 3 fios (SDI vira bidirecional). Modo 3.
+bool useSPI = false;
+void spiWr8 (uint8_t reg, uint8_t val) {
+  pinMode(PIN_SCL, OUTPUT); pinMode(PIN_SDA, OUTPUT);
+  digitalWrite(PIN_SCL, HIGH); delayMicroseconds(2);
+  uint16_t frame = ((uint16_t)(reg & 0x7F) << 8) | val;   // RW=0 + addr + dado
+  for (int i = 15; i >= 0; i--) {
+    digitalWrite(PIN_SCL, LOW);
+    digitalWrite(PIN_SDA, (frame >> i) & 1);
+    delayMicroseconds(1);
+    digitalWrite(PIN_SCL, HIGH);
+    delayMicroseconds(1);
+  }
+}
+void spiRdN (uint8_t reg, uint8_t *buf, uint8_t n) {      // leitura 3 fios
+  pinMode(PIN_SCL, OUTPUT); pinMode(PIN_SDA, OUTPUT);
+  digitalWrite(PIN_SCL, HIGH); delayMicroseconds(2);
+  uint8_t cmd = 0x80 | (reg & 0x7F);                      // RW=1
+  for (int i = 7; i >= 0; i--) {
+    digitalWrite(PIN_SCL, LOW);
+    digitalWrite(PIN_SDA, (cmd >> i) & 1);
+    delayMicroseconds(1);
+    digitalWrite(PIN_SCL, HIGH);
+    delayMicroseconds(1);
+  }
+  pinMode(PIN_SDA, INPUT_PULLUP);                         // chip assume a linha
+  for (uint8_t b = 0; b < n; b++) {
+    uint8_t v = 0;
+    for (int i = 0; i < 8; i++) {
+      digitalWrite(PIN_SCL, LOW); delayMicroseconds(1);
+      digitalWrite(PIN_SCL, HIGH);
+      v = (v << 1) | digitalRead(PIN_SDA);
+      delayMicroseconds(1);
+    }
+    buf[b] = v;
+  }
+  digitalWrite(PIN_SCL, HIGH);
+}
+uint8_t spiRd8 (uint8_t reg) { uint8_t v; spiRdN(reg, &v, 1); return v; }
+// sonda: SIM=1 às cegas e tenta ler o WHO_AM_I por 3 fios
+bool probeSPI (uint8_t scl, uint8_t sda) {
+  uint8_t oldScl = PIN_SCL, oldSda = PIN_SDA;
+  PIN_SCL = scl; PIN_SDA = sda;
+  spiWr8(0x24, 0x01);                                     // CTRL5: SIM=1 (3 fios)
+  uint8_t id = spiRd8(0x0F);
+  if (id == 0x3F) return true;
+  PIN_SCL = oldScl; PIN_SDA = oldSda;
+  pinMode(scl, INPUT); pinMode(sda, INPUT);
+  return false;
+}
+
+// -------------------------------------------- sonda I²C bit-bang (v0.5)
+// Fala I²C "na unha" (~50 kHz) sem o driver Wire: envia START + endereço e
+// verifica o ACK. Serve p/ descobrir em quais pinos o sensor realmente
+// está — e funciona mesmo que o driver I²C do ESP esteja travado.
+static void bbHigh (uint8_t pin) { pinMode(pin, OUTPUT_OPEN_DRAIN); digitalWrite(pin, HIGH); gpio_pullup_en((gpio_num_t)pin); }
+bool bbProbe (uint8_t sda, uint8_t scl, uint8_t addr) {
+  bbHigh(sda); bbHigh(scl);
+  delayMicroseconds(20);
+  if (!digitalRead(sda) || !digitalRead(scl)) {          // linha presa/curto: não é este par
+    pinMode(sda, INPUT); pinMode(scl, INPUT);
+    return false;
+  }
+  digitalWrite(sda, LOW); delayMicroseconds(6);          // START
+  digitalWrite(scl, LOW); delayMicroseconds(6);
+  uint8_t b = addr << 1;                                 // endereço + W
+  for (int i = 7; i >= 0; i--) {
+    digitalWrite(sda, (b >> i) & 1); delayMicroseconds(4);
+    digitalWrite(scl, HIGH); delayMicroseconds(6);
+    digitalWrite(scl, LOW); delayMicroseconds(4);
+  }
+  digitalWrite(sda, HIGH); delayMicroseconds(4);         // solta SDA p/ o ACK
+  digitalWrite(scl, HIGH); delayMicroseconds(6);
+  bool ack = !digitalRead(sda);
+  digitalWrite(scl, LOW); delayMicroseconds(4);
+  digitalWrite(sda, LOW); delayMicroseconds(6);          // STOP
+  digitalWrite(scl, HIGH); delayMicroseconds(6);
+  digitalWrite(sda, HIGH); delayMicroseconds(6);
+  pinMode(sda, INPUT); pinMode(scl, INPUT);
+  return ack;
+}
+// raio-x elétrico dos pinos: INPUT puro (sem pull-up interno) — pino ALTO
+// estável = tem pull-up EXTERNO alimentado (o módulo está lá e com energia)
+void pinReport () {
+  Serial.print("{\"vib\":0,\"err\":\"raio-x dos pinos (ALTO=pull-up externo): ");
+  for (uint8_t p : CAND_PINS) {
+    pinMode(p, INPUT);
+    gpio_pullup_dis((gpio_num_t)p); gpio_pulldown_dis((gpio_num_t)p);
+    delayMicroseconds(50);
+    int hi = 0;
+    for (int k = 0; k < 30; k++) { hi += digitalRead(p); delayMicroseconds(80); }
+    const char *st = hi == 30 ? "ALTO" : (hi == 0 ? "baixo" : "instavel");
+    Serial.printf("G%d=%s ", p, st);
+  }
+  Serial.println("\"}");
+}
+
+// varre todos os pares de pinos candidatos: primeiro I²C (ACK), depois SPI
+// 3 fios (caso o CS do módulo esteja aterrado). Aponta PIN_SDA/SCL e useSPI.
+bool findWiring () {
+  for (uint8_t i = 0; i < sizeof(CAND_PINS); i++) {
+    for (uint8_t j = 0; j < sizeof(CAND_PINS); j++) {
+      if (i == j) continue;
+      for (uint8_t a : CAND_ADDRS) {
+        if (bbProbe(CAND_PINS[i], CAND_PINS[j], a)) {
+          PIN_SDA = CAND_PINS[i]; PIN_SCL = CAND_PINS[j];
+          useSPI = false;
+          return true;
+        }
+      }
+    }
+  }
+  for (uint8_t i = 0; i < sizeof(CAND_PINS); i++) {
+    for (uint8_t j = 0; j < sizeof(CAND_PINS); j++) {
+      if (i == j) continue;
+      if (probeSPI(CAND_PINS[i], CAND_PINS[j])) {   // scl, sda
+        useSPI = true;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 // ------------------------------------------------------------------ I²C
 // Recuperação de barramento travado: se o escravo ficou no meio de uma
 // transação (reset do ESP com I²C em curso), ele segura SDA em baixo e
 // nada mais funciona (toda leitura vira 0xFF). Solução clássica: até 9
 // pulsos de SCL p/ o escravo despejar o byte pendente + condição de STOP.
 void busClear () {
+  if (useSPI) return;                      // SPI bit-bang: nada a destravar
   Wire.end();
   pinMode(PIN_SDA, INPUT_PULLUP);
   pinMode(PIN_SCL, INPUT_PULLUP);
@@ -96,18 +232,29 @@ bool lisAlive () {
 }
 
 uint8_t rd8 (uint8_t reg) {
+  if (useSPI) return spiRd8(reg);
   Wire.beginTransmission(lisAddr); Wire.write(reg); Wire.endTransmission(false);
   Wire.requestFrom(lisAddr, (uint8_t)1);
   return Wire.read();
 }
 void wr8 (uint8_t reg, uint8_t val) {
+  if (useSPI) {
+    if (reg == 0x24) val |= 0x01;          // CTRL5: nunca derrubar o SIM (3 fios)
+    spiWr8(reg, val);
+    return;
+  }
   Wire.beginTransmission(lisAddr); Wire.write(reg); Wire.write(val); Wire.endTransmission();
 }
 void rdSample (int16_t &x, int16_t &y, int16_t &z) {
-  uint8_t sub = REG_OUT_X_L | (chip == LIS3DH ? AUTO_INC : 0);  // 3DSH: ADD_INC no CTRL6
-  Wire.beginTransmission(lisAddr); Wire.write(sub); Wire.endTransmission(false);
-  Wire.requestFrom(lisAddr, (uint8_t)6);
-  uint8_t b[6]; for (int i = 0; i < 6; i++) b[i] = Wire.read();
+  uint8_t b[6];
+  if (useSPI) {
+    spiRdN(REG_OUT_X_L, b, 6);             // ADD_INC (CTRL6) vale p/ SPI também
+  } else {
+    uint8_t sub = REG_OUT_X_L | (chip == LIS3DH ? AUTO_INC : 0);
+    Wire.beginTransmission(lisAddr); Wire.write(sub); Wire.endTransmission(false);
+    Wire.requestFrom(lisAddr, (uint8_t)6);
+    for (int i = 0; i < 6; i++) b[i] = Wire.read();
+  }
   x = (int16_t)(b[0] | (b[1] << 8));
   y = (int16_t)(b[2] | (b[3] << 8));
   z = (int16_t)(b[4] | (b[5] << 8));
@@ -123,18 +270,24 @@ void applyScale () {
   }
 }
 bool lisInit () {
-  struct { uint8_t addr; uint8_t id; Chip c; } probe[] = {
-    { 0x18, 0x33, LIS3DH }, { 0x19, 0x33, LIS3DH },
-    { 0x1D, 0x3F, LIS3DSH }, { 0x1E, 0x3F, LIS3DSH },
-  };
-  for (auto &p : probe) {
-    Wire.beginTransmission(p.addr);
-    if (Wire.endTransmission() != 0) continue;
-    lisAddr = p.addr;
-    if (rd8(REG_WHO_AM_I) == p.id) { chip = p.c; break; }
-    lisAddr = 0;
+  if (useSPI) {
+    chip = (spiRd8(REG_WHO_AM_I) == 0x3F) ? LIS3DSH : NONE;
+    if (chip == NONE) return false;
+  } else {
+    chip = NONE;
+    struct { uint8_t addr; uint8_t id; Chip c; } probe[] = {
+      { 0x18, 0x33, LIS3DH }, { 0x19, 0x33, LIS3DH },
+      { 0x1D, 0x3F, LIS3DSH }, { 0x1E, 0x3F, LIS3DSH },
+    };
+    for (auto &p : probe) {
+      Wire.beginTransmission(p.addr);
+      if (Wire.endTransmission() != 0) continue;
+      lisAddr = p.addr;
+      if (rd8(REG_WHO_AM_I) == p.id) { chip = p.c; break; }
+      lisAddr = 0;
+    }
+    if (chip == NONE) return false;
   }
-  if (chip == NONE) return false;
 
   if (chip == LIS3DSH) {
     odrHz = 1600;
@@ -158,11 +311,12 @@ void fifoReset () {
 
 void printInfo () {
   Serial.printf("\n== SAFEBOAT VIB · bancada v0.2 ==\n");
-  Serial.printf("chip: %s em 0x%02X · WHO_AM_I=0x%02X · %s\n",
+  if (useSPI) Serial.printf("chip: LIS3DSH via SPI 3 FIOS (CS do modulo esta em GND!) · WHO_AM_I=0x%02X\n", rd8(REG_WHO_AM_I));
+  else Serial.printf("chip: %s em 0x%02X · WHO_AM_I=0x%02X · %s\n",
     chip == LIS3DSH ? "LIS3DSH" : "LIS3DH", lisAddr, rd8(REG_WHO_AM_I),
     chip == LIS3DSH ? "16 bits" : "12 bits (HR)");
-  Serial.printf("ODR %.0f Hz · ±%d g · %.2f mg/digito · FIFO stream\n",
-    odrHz, 2 << fsIdx, mgPerDig());
+  Serial.printf("fiacao: SDA=GPIO%d SCL=GPIO%d · ODR %.0f Hz · ±%d g · %.2f mg/digito · FIFO stream\n",
+    PIN_SDA, PIN_SCL, odrHz, 2 << fsIdx, mgPerDig());
   Serial.printf("comandos: i info · r amostra · s stream · b rajada+FFT · g escala · f mede ODR\n\n");
 }
 
@@ -281,24 +435,35 @@ void burst () {
 // numa linha JSON e a FFT/análise roda no PC (tools/live-server.cjs), com
 // resolução cheia nos 3 eixos. ~40 kB/linha: trivial p/ o USB CDC nativo.
 void monitorCycle () {
+  // 5 falhas seguidas = recuperação suave não resolveu (driver I²C pode ter
+  // travado): reinício LIMPO do ESP — boot sempre funciona.
+  static uint8_t falhas = 0;
+  if (falhas >= 5) {
+    Serial.println("{\"vib\":0,\"err\":\"5 falhas seguidas — reiniciando o ESP para comecar limpo\"}");
+    Serial.flush(); delay(200);
+    ESP.restart();
+  }
   if (!lisAlive()) {
     Serial.println("{\"vib\":0,\"err\":\"sensor fora do barramento — recuperando\"}");
     busClear();
     delay(20);
-    if (!lisInit()) { delay(1000); return; }
+    if (!lisInit()) { falhas++; chip = chip == NONE ? NONE : chip; delay(500); return; }
     Serial.println("{\"vib\":0,\"err\":\"sensor recuperado\"}");
   }
   float dt; bool ovr;
   if (!captureBurst(dt, ovr)) {
     Serial.println("{\"vib\":0,\"err\":\"captura sem dados (sensor reiniciou?) — reconfigurando\"}");
+    falhas++;
     busClear(); delay(20); lisInit();
     return;
   }
   if (N_BURST / dt > odrHz * 1.5f) {
     Serial.println("{\"vib\":0,\"err\":\"leituras invalidas — reconfigurando\"}");
+    falhas++;
     busClear(); delay(20); lisInit();
     return;
   }
+  falhas = 0;
   Serial.printf("{\"raw\":1,\"fs\":%.1f,\"ovr\":%d,\"scale\":%d,\"sens\":%.4f",
     N_BURST / dt, ovr ? 1 : 0, 2 << fsIdx, mgPerDig());
   const char *k[3] = { ",\"x\":[", ",\"y\":[", ",\"z\":[" };
@@ -391,6 +556,12 @@ void setup () {
   Serial.begin(115200);
   uint32_t t0 = millis();
   while (!Serial && millis() - t0 < 4000) delay(10);
+  // descobre onde o sensor REALMENTE está (varre todos os pares de pinos)
+  if (findWiring()) {
+    Serial.printf("fiacao detectada pela sonda: SDA=GPIO%d SCL=GPIO%d\n", PIN_SDA, PIN_SCL);
+  } else {
+    Serial.println("sonda: nenhum ACK em par algum de pinos (sensor sem VCC/GND?)");
+  }
   busClear();                                // destrava o barramento se preciso
   delay(50);
   if (!lisInit()) {
@@ -411,17 +582,22 @@ void setup () {
 
 // ------------------------------------------------------------------- loop
 void loop () {
-  if (chip == NONE) {                        // sem sensor: tenta de novo a cada 2 s
-    static uint32_t tRetry = 0;              // (reencaixou o jumper → volta sozinho)
+  if (chip == NONE) {                        // sem sensor: revarre TODOS os pinos a cada 2 s
+    static uint32_t tRetry = 0;
     if (millis() - tRetry > 2000) {
       tRetry = millis();
+      bool achou = findWiring();             // sonda bit-bang (imune a driver travado)
       busClear(); delay(10);
-      if (lisInit()) {
-        Serial.println("sensor conectado!");
+      if (achou && lisInit()) {
+        Serial.printf("sensor conectado! SDA=GPIO%d SCL=GPIO%d\n", PIN_SDA, PIN_SCL);
         printInfo();
         bootT = millis(); cmdSeen = false;
+      } else if (achou) {
+        Serial.printf("{\"vib\":0,\"err\":\"ACK em SDA=%d/SCL=%d mas WHO_AM_I nao respondeu — contato fraco\"}\n", PIN_SDA, PIN_SCL);
       } else {
-        Serial.println("{\"vib\":0,\"err\":\"sensor desconectado — confira os jumpers (VCC 3V3, GND, SDA=8, SCL=9)\"}");
+        Serial.println("{\"vib\":0,\"err\":\"sonda nao achou o sensor em nenhum par de pinos — VCC/GND?\"}");
+        static uint8_t nScan = 0;
+        if ((++nScan % 3) == 1) pinReport();   // raio-x elétrico a cada 3 varreduras
       }
     }
     return;
