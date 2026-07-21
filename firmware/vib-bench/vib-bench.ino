@@ -86,10 +86,13 @@ void busClear () {
   }
   Wire.begin(PIN_SDA, PIN_SCL, 400000);
 }
-// saúde do sensor: WHO_AM_I certo? (0xFF/0x00 = barramento morto)
+// saúde do sensor: identidade E configuração. Se o módulo piscar a
+// alimentação (jumper frouxo), o WHO_AM_I volta a responder mas os CTRL
+// voltam ao padrão de fábrica (ODR desligado) — a FIFO nunca mais enche.
 bool lisAlive () {
   uint8_t id = rd8(REG_WHO_AM_I);
-  return (chip == LIS3DSH && id == 0x3F) || (chip == LIS3DH && id == 0x33);
+  if (chip == LIS3DSH) return id == 0x3F && rd8(0x20) == 0x9F;
+  return id == 0x33 && rd8(0x20) == 0x97;
 }
 
 uint8_t rd8 (uint8_t reg) {
@@ -189,24 +192,34 @@ void fft (int n) {
 }
 
 // ------------------------------------------------------------------ rajada
-void captureBurst (float &dt, bool &ovr) {
+// retorna false em TIMEOUT (3× o tempo esperado): sensor parou de produzir
+// (ex.: perdeu alimentação e voltou em power-down) — sem isso o loop trava
+// p/ sempre esperando uma FIFO que nunca enche.
+bool captureBurst (float &dt, bool &ovr) {
   fifoReset();
   int n = 0; ovr = false;
   uint32_t t0 = micros();
+  const uint32_t limite = (uint32_t)(N_BURST / odrHz * 3e6f) + 500000;
   while (n < N_BURST) {
+    if (micros() - t0 > limite) { dt = (micros() - t0) / 1e6f; return false; }
     uint8_t src = rd8(REG_FIFO_SRC);
     if (src & 0x40) ovr = true;
     int avail = src & 0x1F;
     while (avail-- && n < N_BURST) { rdSample(bx[n], by[n], bz[n]); n++; }
   }
   dt = (micros() - t0) / 1e6f;
+  return true;
 }
 
 void burst () {
   const float mg = mgPerDig();
   Serial.printf("rajada: %d amostras @ %.0f Hz (%.2f s)...\n", N_BURST, odrHz, N_BURST / odrHz);
   float dt; bool ovr;
-  captureBurst(dt, ovr);
+  if (!captureBurst(dt, ovr)) {
+    Serial.println("TIMEOUT: sensor nao produziu dados — reconfigurando (confira os jumpers de VCC/GND)");
+    busClear(); delay(20); lisInit();
+    return;
+  }
   Serial.printf("capturado em %.2f s · taxa efetiva %.0f Hz%s\n", dt, N_BURST / dt, ovr ? " · FIFO OVERRUN!" : "");
 
   int16_t *axes[3] = { bx, by, bz };
@@ -278,9 +291,17 @@ void monitorCycle () {
   }
   const float mg = mgPerDig();
   float dt; bool ovr;
-  captureBurst(dt, ovr);
-  // captura implausível (taxa >1,5× nominal) = leituras mortas: descarta
-  if (N_BURST / dt > odrHz * 1.5f) return;
+  if (!captureBurst(dt, ovr)) {
+    Serial.println("{\"vib\":0,\"err\":\"captura sem dados (sensor reiniciou?) — reconfigurando\"}");
+    busClear(); delay(20); lisInit();
+    return;
+  }
+  // captura implausível (taxa >1,5× nominal) = leituras 0xFF: reconfigura
+  if (N_BURST / dt > odrHz * 1.5f) {
+    Serial.println("{\"vib\":0,\"err\":\"leituras invalidas — reconfigurando\"}");
+    busClear(); delay(20); lisInit();
+    return;
+  }
 
   int16_t *axes[3] = { bx, by, bz };
   float mean[3], rms[3], peak[3];
@@ -357,7 +378,21 @@ void setup () {
 
 // ------------------------------------------------------------------- loop
 void loop () {
-  if (chip == NONE) { delay(500); return; }
+  if (chip == NONE) {                        // sem sensor: tenta de novo a cada 2 s
+    static uint32_t tRetry = 0;              // (reencaixou o jumper → volta sozinho)
+    if (millis() - tRetry > 2000) {
+      tRetry = millis();
+      busClear(); delay(10);
+      if (lisInit()) {
+        Serial.println("sensor conectado!");
+        printInfo();
+        bootT = millis(); cmdSeen = false;
+      } else {
+        Serial.println("{\"vib\":0,\"err\":\"sensor desconectado — confira os jumpers (VCC 3V3, GND, SDA=8, SCL=9)\"}");
+      }
+    }
+    return;
+  }
   if (!cmdSeen && !monitor && millis() - bootT > 4000) {
     monitor = true;                          // bancada: liga sozinho p/ o live-server
     Serial.println("modo monitor automatico (qualquer comando desliga; 'm' religa)");
