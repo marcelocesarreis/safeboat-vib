@@ -63,6 +63,35 @@ float re[N_BURST], im[N_BURST];
 float mgPerDig () { return chip == LIS3DSH ? SENS_3DSH[fsIdx] : SENS_3DH[fsIdx]; }
 
 // ------------------------------------------------------------------ I²C
+// Recuperação de barramento travado: se o escravo ficou no meio de uma
+// transação (reset do ESP com I²C em curso), ele segura SDA em baixo e
+// nada mais funciona (toda leitura vira 0xFF). Solução clássica: até 9
+// pulsos de SCL p/ o escravo despejar o byte pendente + condição de STOP.
+void busClear () {
+  Wire.end();
+  pinMode(PIN_SDA, INPUT_PULLUP);
+  pinMode(PIN_SCL, INPUT_PULLUP);
+  delayMicroseconds(10);
+  if (digitalRead(PIN_SDA) == LOW) {
+    pinMode(PIN_SCL, OUTPUT_OPEN_DRAIN);
+    for (int i = 0; i < 9 && digitalRead(PIN_SDA) == LOW; i++) {
+      digitalWrite(PIN_SCL, LOW); delayMicroseconds(6);
+      digitalWrite(PIN_SCL, HIGH); delayMicroseconds(6);
+    }
+    // STOP: SDA sobe com SCL alto
+    pinMode(PIN_SDA, OUTPUT_OPEN_DRAIN);
+    digitalWrite(PIN_SDA, LOW); delayMicroseconds(6);
+    digitalWrite(PIN_SCL, HIGH); delayMicroseconds(6);
+    digitalWrite(PIN_SDA, HIGH); delayMicroseconds(6);
+  }
+  Wire.begin(PIN_SDA, PIN_SCL, 400000);
+}
+// saúde do sensor: WHO_AM_I certo? (0xFF/0x00 = barramento morto)
+bool lisAlive () {
+  uint8_t id = rd8(REG_WHO_AM_I);
+  return (chip == LIS3DSH && id == 0x3F) || (chip == LIS3DH && id == 0x33);
+}
+
 uint8_t rd8 (uint8_t reg) {
   Wire.beginTransmission(lisAddr); Wire.write(reg); Wire.endTransmission(false);
   Wire.requestFrom(lisAddr, (uint8_t)1);
@@ -238,9 +267,20 @@ void burst () {
 // Uma linha JSON por ciclo (~1,4 s): stats por eixo + FFT 256 bins (máx de
 // cada grupo de 4) + forma de onda 256 pts do eixo dominante.
 void monitorCycle () {
+  // watchdog do sensor: se o barramento morreu (fio mexido, reset no meio
+  // de transação), destrava e re-inicializa em vez de emitir lixo 0xFF
+  if (!lisAlive()) {
+    Serial.println("{\"vib\":0,\"err\":\"sensor fora do barramento — recuperando\"}");
+    busClear();
+    delay(20);
+    if (!lisInit()) { delay(1000); return; }
+    Serial.println("{\"vib\":0,\"err\":\"sensor recuperado\"}");
+  }
   const float mg = mgPerDig();
   float dt; bool ovr;
   captureBurst(dt, ovr);
+  // captura implausível (taxa >1,5× nominal) = leituras mortas: descarta
+  if (N_BURST / dt > odrHz * 1.5f) return;
 
   int16_t *axes[3] = { bx, by, bz };
   float mean[3], rms[3], peak[3];
@@ -297,7 +337,7 @@ void setup () {
   Serial.begin(115200);
   uint32_t t0 = millis();
   while (!Serial && millis() - t0 < 4000) delay(10);
-  Wire.begin(PIN_SDA, PIN_SCL, 400000);
+  busClear();                                // destrava o barramento se preciso
   delay(50);
   if (!lisInit()) {
     Serial.println("ERRO: nenhum acelerometro suportado. Confira SDA=8 SCL=9 VCC=3V3 GND.");

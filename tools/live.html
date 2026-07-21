@@ -161,6 +161,7 @@ const es = new EventSource('/events')
 es.onmessage = e => {
   const d = JSON.parse(e.data)
   if (d.status) { $('stTxt').textContent = d.status; $('st').classList.toggle('on', /conectado/.test(d.status)) }
+  if (d.err) { $('stTxt').textContent = d.err; return }
   if (!d.vib) return
   nCiclos++
   $('st').classList.add('on'); $('stTxt').textContent = 'recebendo · COM3'
