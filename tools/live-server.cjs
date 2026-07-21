@@ -72,6 +72,8 @@ function median (arr) {
 //   máquina    → >8 Hz, espectro por MEDIANA DE WELCH (8 janelas de 512):
 //                a pancada contamina 1–2 janelas, a mediana as ignora;
 //                as raias do motor (1×, 2×…) estão em todas e sobrevivem.
+const machSt = { on: false, hits: 0, miss: 0 }   // estado MÁQUINA com histerese
+
 function processRaw (d) {
   const N = d.x.length
   const fs = d.fs
@@ -154,6 +156,17 @@ function processRaw (d) {
                    // em amplitude sobreconta a potência em 1,5×
   const quality = 1 - nImp / NB              // fração de blocos limpos
 
+  // ---- detecção "MÁQUINA LIGADA": raia dominante proeminente sobre o piso ----
+  // Máquina girando = raia estreita muito acima do piso espectral (ruído/
+  // ambiente é largo e baixo). Proeminência = pico / mediana do espectro.
+  const i0 = Math.ceil(10 / df)
+  let pkI = i0
+  for (let i = i0; i < W / 2; i++) if (medSpec[i] > medSpec[pkI]) pkI = i
+  const floorSpec = median(medSpec.slice(i0)) || 1e-9
+  const pkMg = medSpec[pkI] * 1000
+  const prom = medSpec[pkI] / floorSpec
+  const detected = (pkMg > 4 && prom > 8) || pkMg > 15
+
   // ---- saídas p/ o painel ----
   const fft = []
   for (let i = 0; i < W / 2; i++) fft.push(+(medSpec[i] * 1000).toFixed(2))
@@ -165,8 +178,15 @@ function processRaw (d) {
   }
   const mean = grav.map(v => +(v * 1000).toFixed(1))
   const rms = rmsDyn.map(v => +(v * 1000).toFixed(2))
+  // histerese entre ciclos: liga com 2 detecções seguidas, desliga com 3 faltas
+  if (detected) { machSt.hits = Math.min(9, machSt.hits + 1); machSt.miss = 0 }
+  else { machSt.miss = Math.min(9, machSt.miss + 1); machSt.hits = 0 }
+  if (!machSt.on && machSt.hits >= 2) machSt.on = true
+  if (machSt.on && machSt.miss >= 3) machSt.on = false
+
   return {
     vib: 1, fftpc: 1, decomp: 1, fs: d.fs, ovr: d.ovr, scale: d.scale, clip: d.clip || 0, bus: d.bus || 400, dom,
+    machine: { on: machSt.on, f: +(pkI * df).toFixed(1), rpm: Math.round(pkI * df * 60), amp: +pkMg.toFixed(1), prom: +prom.toFixed(1) },
     viso: +Math.sqrt(sumV2).toFixed(3), res: +df.toFixed(2), quality: +quality.toFixed(2),
     gmag: +gmag.toFixed(3), tilt: +tilt.toFixed(1),
     motion: { rms: +(motR * 1000).toFixed(1), peak: +(motP * 1000).toFixed(0) },
