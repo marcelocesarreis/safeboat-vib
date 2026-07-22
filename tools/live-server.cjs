@@ -325,13 +325,18 @@ try {
       }
     }
   })
+  bridgeChild = child
   child.on('exit', code => {
-    status = `ponte serial caiu (código ${code}) — tentando de novo em 3 s`
+    status = `aguardando o sensor no USB — nova busca em 3 s`
     broadcast({ status })
-    setTimeout(startBridge, 3000)
+    setTimeout(() => {                     // redetecta a porta a cada tentativa:
+      COM = process.env.VIB_COM || null    // plugar DEPOIS de abrir também funciona
+      detectCom(c => { COM = c; startBridge() })
+    }, 3000)
   })
-  process.on('exit', () => { try { child.kill() } catch {} })
 }
+let bridgeChild = null
+process.on('exit', () => { try { if (bridgeChild) bridgeChild.kill() } catch {} })
 // ------------------------- modo simulação (VIB_SIM=1): embarcação sintética
 // Gera ciclos como os do sensor real — p/ demo do painel e testes sem hardware.
 function startSim () {
