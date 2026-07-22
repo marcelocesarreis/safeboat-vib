@@ -100,23 +100,45 @@ function groupSpectrum (cycles) {
 // em torno do rpm esperado. Meias-ordens NÃO entram aqui — num motor liso o
 // pente meio-ordem é degenerado e trava em rotação falsa (bug pego no teste
 // sintético). Empate ~10% → fica o candidato mais perto do rpm declarado.
-function findCrank (spec, df, rpmHint) {
-  const range = rpmHint ? [rpmHint * 0.8 / 60, rpmHint * 1.25 / 60] : [10, 70]
-  const hintF = rpmHint ? rpmHint / 60 : null
+function combScore (spec, df, f0, ks, flat = false) {
+  let s = 0
+  for (const k of ks) s += ampAt(spec, df, f0 * k, 1) / (flat ? 1 : Math.sqrt(k))
+  return s
+}
+function findCrank (spec, df, rpmRange) {
+  const range = rpmRange ? [rpmRange[0] / 60, rpmRange[1] / 60] : [8, 70]
   let bestF = range[0], bestS = -1
   for (let f = range[0]; f <= range[1]; f += df / 4) {
-    let s = 0
-    for (let k = 1; k <= 8; k++) s += ampAt(spec, df, f * k, 1) / Math.sqrt(k)
-    const closer = hintF ? Math.abs(f - hintF) < Math.abs(bestF - hintF) : false
-    if (s > bestS * 1.1 || (s > bestS * 0.9 && closer && s >= bestS)) { bestS = Math.max(s, bestS); bestF = f }
-    else if (s > bestS) bestS = s
+    const s = combScore(spec, df, f, [1, 2, 3, 4, 5, 6, 7, 8])
+    if (s > bestS) { bestS = s; bestF = f }
   }
-  return bestF
+  // desambiguação: o pente com peso 1/√k pode travar em 3/2, 2/3, 2× ou ½
+  // do verdadeiro (confusões clássicas sem tacômetro). Reavalia os candidatos
+  // com pesos PLANOS — a família inteira de ordens decide, não a raia grande.
+  const cands = [bestF, bestF / 2, bestF * 2, bestF * 2 / 3, bestF * 3 / 2, bestF * 1 / 3]
+    .filter(f => f >= range[0] * 0.95 && f <= range[1] * 1.05)
+  let fin = bestF, finS = -1
+  for (const f of cands) {
+    const s = combScore(spec, df, f, [1, 2, 3, 4, 5, 6, 7, 8], true)   // pesos planos
+    if (s > finS * 1.02 || (s >= finS * 0.98 && f > fin)) { finS = Math.max(s, finS); fin = f }
+    else if (s > finS) finS = s
+  }
+  return fin
+}
+// picos dominantes do espectro (transparência: confere a âncora na mão)
+function topPeaks (spec, df, n = 5) {
+  const out = []
+  for (let i = Math.ceil(5 / df); i < Math.min(spec.length - 1, Math.floor(500 / df)); i++) {
+    if (spec[i] > spec[i - 1] && spec[i] >= spec[i + 1]) out.push([i * df, spec[i]])
+  }
+  return out.sort((a, b) => b[1] - a[1]).slice(0, n)
 }
 
-const EXPECT_RPM = {
-  'neutro-800': 800, 'neutro-1200': 1200, 'neutro-max': null,
-  'engatado-900': 900, 'engatado-1200': 1200, 'engatado-2000': 2000, 'engatado-max': null,
+// faixas REALISTAS de busca da rotação (rpm): o rótulo é nominal — diesel
+// marítimo em lenta real gira 550–700; "máximo" desengatado vai ao governador
+const EXPECT_RANGE = {
+  'neutro-800': [480, 1050], 'neutro-1200': [950, 1500], 'neutro-max': [1700, 3700],
+  'engatado-900': [550, 1150], 'engatado-1200': [950, 1500], 'engatado-2000': [1700, 2400], 'engatado-max': [1700, 3700],
 }
 
 // ------------------------------------------------------------------ análise
@@ -150,8 +172,9 @@ for (const eng of engines) {
       for (let i = Math.ceil(5 / df); i < Math.floor(500 / df); i++) e += spec[i] * spec[i]
       out.ruido = +Math.sqrt(e).toFixed(2)
     } else {
-      const f1 = findCrank(spec, df, EXPECT_RPM[pat])
+      const f1 = findCrank(spec, df, EXPECT_RANGE[pat])
       out.rpm = Math.round(f1 * 60)
+      out.peaks = topPeaks(spec, df).map(([f, a]) => `${f.toFixed(1)}Hz(${(f / f1).toFixed(2)}x)=${a.toFixed(0)}mg`)
       out.orders = {}
       for (let k = 0.5; k <= Math.max(8, Nf * 2 + 1); k += 0.5) {
         out.orders[k] = +ampAt(spec, df, f1 * k).toFixed(2)
@@ -185,6 +208,11 @@ for (const eng of engines) {
       ? `ruído ambiente ${out.ruido} mg`
       : `rpm ${out.rpm} · A(queima ${Nf}×)=${out.aFire} mg · R_half=${out.R_half} · R_low=${out.R_low}`
     console.log(`  ${side.toUpperCase()} · ${pat.padEnd(14)} ${tag}  [${d.cycles.length} ciclos]`)
+    if (out.peaks) console.log(`      picos: ${out.peaks.join(' · ')}`)
+    if (out.orders) {
+      const ks = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6]
+      console.log('      ordens: ' + ks.map(k => `${k}×=${out.orders[k]}`).join(' '))
+    }
   }
 
   // vereditos BE × BB por padrão
