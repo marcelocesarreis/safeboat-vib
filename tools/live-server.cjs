@@ -460,6 +460,33 @@ else detectCom(com => {
 // ------------------------------------------------------------- HTTP + SSE
 http.createServer((req, res) => {
   const url = req.url.split('?')[0]
+  // ---- ingestão via Wi-Fi (firmware de campo vib-field) ----
+  // mesmo JSON {"raw":...} da serial: entra no MESMO pipeline e dashboard
+  if (url === '/ingest' && req.method === 'POST') {
+    let body = ''
+    req.on('data', d => body += d)
+    req.on('end', () => {
+      try {
+        const j = JSON.parse(body)
+        if (j.raw) {
+          last = processRaw(j)
+          last.status = status = 'recebendo de ' + (j.dev || 'sensor') + ' via Wi-Fi' +
+            (j.lost ? ' · ' + j.lost + ' rajadas perdidas' : '')
+          if (j.dev) last.dev = j.dev
+          broadcast(last)
+          recFeed(j, last)
+        } else {
+          if (j.err) status = (j.dev || 'sensor') + ': ' + j.err
+          broadcast({ ...j, status })
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end('{"ok":1}')
+      } catch (e) {
+        res.writeHead(400); res.end('{"error":"json"}')
+      }
+    })
+    return
+  }
   // ---- gravador de padrões ----
   if (url === '/rec/start' && req.method === 'POST') {
     let body = ''
