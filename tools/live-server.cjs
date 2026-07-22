@@ -17,11 +17,23 @@ const path = require('path')
 const { spawn } = require('child_process')
 
 const PORT = 8102
-const COM = process.env.VIB_COM || 'COM3'
+let COM = process.env.VIB_COM || null      // null = autodetectar o ESP32-C3
+
+// autodetecção da porta: procura o USB nativo do ESP32-C3 (VID 303A PID 1001)
+// — no notebook a placa pode enumerar em qualquer COM. VIB_COM=COMx força.
+function detectCom (cb) {
+  if (COM) return cb(COM)
+  const { exec } = require('child_process')
+  exec('powershell -NoProfile -Command "Get-CimInstance Win32_PnPEntity | Where-Object { $_.DeviceID -match \'VID_303A.PID_1001\' -and $_.Name -match \'COM\' } | ForEach-Object { $_.Name }"',
+    { windowsHide: true }, (e, out) => {
+      const m = (out || '').match(/COM(\d+)/)
+      cb(m ? 'COM' + m[1] : 'COM3')
+    })
+}
 
 let clients = []
 let last = null          // último ciclo (novos clientes recebem na hora)
-let status = 'abrindo ' + COM + '…'
+let status = 'detectando a porta do sensor…'
 
 // ------------------------------------------------- análise no PC (v0.4)
 // O firmware manda a rajada BRUTA (3 eixos × 2048 int16); aqui roda a FFT
@@ -353,7 +365,12 @@ module.exports = { processRaw, fftMag }
 if (require.main !== module) return
 
 if (process.env.VIB_SIM === '1') startSim()
-else startBridge()
+else detectCom(com => {
+  COM = com
+  status = 'abrindo ' + COM + '…'
+  console.log('porta do sensor: ' + COM + (process.env.VIB_COM ? ' (VIB_COM)' : ' (autodetectada)'))
+  startBridge()
+})
 
 // ------------------------------------------------------------- HTTP + SSE
 http.createServer((req, res) => {
@@ -402,8 +419,15 @@ http.createServer((req, res) => {
     return fs.createReadStream(path.join(__dirname, 'live.html')).pipe(res)
   }
   if (url === '/img/logo-safeboat-branco.png') {
-    res.writeHead(200, { 'Content-Type': 'image/png' })
-    return fs.createReadStream(path.join(__dirname, '..', 'public', 'img', 'logo-safeboat-branco.png')).pipe(res)
+    // pasta-fonte usa public/img; o repo clonado tem img/ na raiz
+    for (const p of [path.join(__dirname, '..', 'public', 'img', 'logo-safeboat-branco.png'),
+                     path.join(__dirname, '..', 'img', 'logo-safeboat-branco.png')]) {
+      if (fs.existsSync(p)) {
+        res.writeHead(200, { 'Content-Type': 'image/png' })
+        return fs.createReadStream(p).pipe(res)
+      }
+    }
+    res.writeHead(404); return res.end()
   }
   res.writeHead(404); res.end('404')
-}).listen(PORT, () => console.log(`VIB monitor ao vivo: http://localhost:${PORT} (lendo ${COM})`))
+}).listen(PORT, () => console.log(`VIB monitor ao vivo: http://localhost:${PORT}`))
