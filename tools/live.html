@@ -63,6 +63,11 @@
   .pbtn.recing { border-color: var(--crit); background: #fef2f2; animation: pulse 1s infinite; }
   .pbtn.recing .ps { color: var(--crit); font-weight: 700; }
   .pbtn:disabled { opacity: .45; cursor: default; }
+  .abtn { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff;
+          color: var(--navy); font-size: 12.5px; cursor: pointer; font-family: var(--sans); transition: .15s; }
+  .abtn:hover { border-color: var(--navy); }
+  .sideBtn.on { background: var(--navy); border-color: var(--navy); color: #fff; font-weight: 700; }
+  #sideBb.on { background: #b45309; border-color: #b45309; }
 </style>
 </head>
 <body>
@@ -94,9 +99,36 @@
         <label>GRAVADOR DE PADRÕES · MODELO DO MOTOR</label><br>
         <input id="recEngine" placeholder="ex.: Mercruiser 4.5L 250hp · barco Fenix 290" autocomplete="off">
       </div>
+      <div>
+        <label>MOTOR EM MEDIÇÃO</label><br>
+        <div style="display:flex; gap:6px; margin-top:2px">
+          <button class="abtn sideBtn on" data-side="be" id="sideBe">BE · boreste</button>
+          <button class="abtn sideBtn" data-side="bb" id="sideBb">BB · bombordo</button>
+        </div>
+      </div>
       <span class="recSt" id="recSt">pronto — clique num padrão para gravar 12 ciclos (~18 s)</span>
     </div>
     <div class="pgrid" id="pgrid"></div>
+
+    <div style="margin-top:16px; border-top:1px solid var(--line); padding-top:14px">
+      <div class="recTop" style="margin-bottom:8px">
+        <div>
+          <label>COMPARADOR BB × BE · DIAGNÓSTICO POR DIVERGÊNCIA</label><br>
+          <select id="cmpPattern" style="border:1px solid var(--line); border-radius:8px; padding:8px 12px; font-size:13px; font-family:var(--sans); color:var(--navy); margin-top:2px"></select>
+          <button class="abtn" id="cmpBtn" style="margin-left:6px">Comparar</button>
+        </div>
+      </div>
+      <div id="cmpOut" style="display:none">
+        <canvas id="cvCmp" width="1140" height="230" style="margin-bottom:10px"></canvas>
+        <div class="tableCard" style="margin-top:0"><table id="cmpTable">
+          <tr><th></th><th>viso (mm/s)</th><th>1× (Hz)</th><th>RPM</th><th>amp 1× (mg)</th><th>ciclos</th></tr>
+          <tr id="cmpBe"><td style="color:#2563eb">BE · boreste</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr id="cmpBb"><td style="color:#f59e0b">BB · bombordo</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+        </table></div>
+        <div id="cmpHints" class="foot" style="margin-top:10px"></div>
+      </div>
+      <div id="cmpMsg" class="foot" style="margin-top:6px">grave o mesmo padrão nos dois bordos para liberar a comparação</div>
+    </div>
   </div>
   <p class="foot"><b>O modelo:</b> o acelerômetro mede tudo somado — gravidade girando (atitude), aceleração de navegação, pancadas de mar e a vibração do sistema propulsivo. A separação é por assinatura física: gravidade &lt;0,4 Hz · movimento 0,4–8 Hz · impacto = transiente localizado no tempo (RMS do bloco ≫ mediana) · máquina = raias estacionárias &gt;8 Hz, medidas por mediana de janelas excluindo as que contêm impacto. <b>Teste:</b> deixe parado (zona A) → mexa o celular no ar (MOVIMENTO sobe, máquina fica) → dê batidas (IMPACTOS contam, espectro não contamina) → encoste num motor/vibracall (raias aparecem e o RMS da máquina sobe). A escala ±g se ajusta sozinha às pancadas.</p>
 </main>
@@ -188,9 +220,22 @@ function drawTrend () {
 }
 
 // ---------------------------- gravador de padrões ----------------------------
-let PATTERNS = {}, REC_TARGET = 12
+let PATTERNS = {}, REC_TARGET = 12, RECORDED = { be: {}, bb: {} }
 let recState = { active: false, pattern: null }
+let side = localStorage.getItem('vibSide') || 'be'
 const engineEl = $('recEngine')
+
+document.querySelectorAll('.sideBtn').forEach(b => b.addEventListener('click', () => {
+  if (recState.active) return
+  side = b.dataset.side
+  localStorage.setItem('vibSide', side)
+  paintSide()
+  refreshRecList()
+}))
+function paintSide () {
+  document.querySelectorAll('.sideBtn').forEach(b => b.classList.toggle('on', b.dataset.side === side))
+}
+paintSide()
 engineEl.value = localStorage.getItem('vibEngine') || ''
 engineEl.addEventListener('input', () => {
   localStorage.setItem('vibEngine', engineEl.value)
@@ -205,22 +250,89 @@ function fmtStamp (s) {   // 20260722-103015 → 22/07 10:30
 async function refreshRecList () {
   try {
     const r = await (await fetch('/rec/list?engine=' + encodeURIComponent(engineEl.value))).json()
-    PATTERNS = r.patterns; REC_TARGET = r.target
+    PATTERNS = r.patterns; REC_TARGET = r.target; RECORDED = r.recorded
     const grid = $('pgrid')
     grid.innerHTML = ''
     for (const [id, label] of Object.entries(PATTERNS)) {
       const b = document.createElement('button')
       b.className = 'pbtn'
       b.dataset.id = id
-      const done = r.recorded[id]
+      const done = RECORDED[side][id]
+      const other = RECORDED[side === 'be' ? 'bb' : 'be'][id]
       if (done) b.classList.add('done')
       b.innerHTML = `<div class="pt">${label}</div>
-        <div class="ps">${done ? '✓ ' + done.count + ' gravação(ões) · última ' + fmtStamp(done.last) : 'não gravado'}</div>`
+        <div class="ps">${done ? '✓ ' + done.count + ' gravação(ões) · última ' + fmtStamp(done.last) : 'não gravado'}${other ? ' · outro bordo ✓' : ''}</div>`
       b.onclick = () => togglePattern(id, label)
       grid.appendChild(b)
     }
+    // comparador: padrões presentes nos DOIS bordos
+    const sel = $('cmpPattern')
+    const cur = sel.value
+    sel.innerHTML = ''
+    let habilitados = 0
+    for (const [id, label] of Object.entries(PATTERNS)) {
+      if (RECORDED.be[id] && RECORDED.bb[id]) {
+        const o = document.createElement('option')
+        o.value = id; o.textContent = label
+        sel.appendChild(o); habilitados++
+      }
+    }
+    if (cur && [...sel.options].some(o => o.value === cur)) sel.value = cur
+    $('cmpBtn').disabled = !habilitados
+    $('cmpMsg').style.display = habilitados ? 'none' : ''
     paintRecState()
   } catch {}
+}
+
+$('cmpBtn').addEventListener('click', async () => {
+  const pat = $('cmpPattern').value
+  if (!pat) return
+  $('cmpBtn').textContent = 'comparando…'
+  try {
+    const r = await (await fetch(`/rec/compare?engine=${encodeURIComponent(engineEl.value)}&pattern=${encodeURIComponent(pat)}`)).json()
+    if (r.error) { $('cmpMsg').style.display = ''; $('cmpMsg').textContent = r.error; return }
+    $('cmpOut').style.display = ''
+    drawCompare(r)
+    const fill = (rowId, s) => {
+      const tds = $(rowId).children
+      tds[1].textContent = s.viso.toFixed(2)
+      tds[2].textContent = s.f1.toFixed(1)
+      tds[3].textContent = s.rpm
+      tds[4].textContent = s.amp1x.toFixed(1)
+      tds[5].textContent = s.n
+    }
+    fill('cmpBe', r.be); fill('cmpBb', r.bb)
+    $('cmpHints').innerHTML = '<b>Diagnóstico automático (' + r.label + ' · pior: ' + r.delta.worse + ', razão viso ' + r.delta.visoRatio + '×):</b><br>· ' + r.hints.join('<br>· ')
+  } finally { $('cmpBtn').textContent = 'Comparar' }
+})
+
+function drawCompare (r) {
+  const cv = $('cvCmp'), ctx = cv.getContext('2d')
+  const w = cv.width, h = cv.height
+  ctx.fillStyle = '#06070c'; ctx.fillRect(0, 0, w, h)
+  const fmax = Math.min(r.be.fs, r.bb.fs) / 2
+  let top = 1
+  for (const s of [r.be.spec, r.bb.spec]) for (const v of s) top = Math.max(top, v)
+  const plot = (spec, fs, color) => {
+    ctx.strokeStyle = color; ctx.lineWidth = 1.6
+    ctx.beginPath()
+    const dfr = fs / 512
+    spec.forEach((v, i) => {
+      const x = (i * dfr) / fmax * w
+      const y = h - 16 - Math.min(1, Math.pow(v / top, 0.55)) * (h - 34)
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)
+    })
+    ctx.stroke()
+  }
+  plot(r.be.spec, r.be.fs, '#60a5fa')
+  plot(r.bb.spec, r.bb.fs, '#f59e0b')
+  ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.font = '10px sans-serif'
+  for (const f of [0, 100, 200, 300, 400, 600, 800]) {
+    if (f > fmax) break
+    ctx.fillText(f + '', f / fmax * w + 2, h - 4)
+  }
+  ctx.fillStyle = '#60a5fa'; ctx.font = '12px sans-serif'; ctx.fillText('BE · boreste', w - 210, 18)
+  ctx.fillStyle = '#f59e0b'; ctx.fillText('BB · bombordo', w - 110, 18)
 }
 
 async function togglePattern (id, label) {
@@ -236,7 +348,7 @@ async function togglePattern (id, label) {
   }
   const r = await fetch('/rec/start', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pattern: id, engine: engineEl.value.trim() }),
+    body: JSON.stringify({ pattern: id, engine: engineEl.value.trim(), side }),
   })
   if (!r.ok) { const e = await r.json(); $('recSt').textContent = 'erro: ' + e.error }
 }
@@ -252,8 +364,8 @@ function paintRecState () {
   const st = $('recSt')
   st.classList.toggle('on', recState.active)
   st.textContent = recState.active
-    ? `GRAVANDO "${PATTERNS[recState.pattern]}" · ciclo ${recState.got}/${REC_TARGET}`
-    : 'pronto — clique num padrão para gravar 12 ciclos (~18 s)'
+    ? `GRAVANDO ${recState.side === 'bb' ? 'BB·bombordo' : 'BE·boreste'} · "${PATTERNS[recState.pattern]}" · ciclo ${recState.got}/${REC_TARGET}`
+    : `pronto — bordo ${side === 'bb' ? 'BB·bombordo' : 'BE·boreste'} · clique num padrão p/ gravar 12 ciclos`
 }
 refreshRecList()
 

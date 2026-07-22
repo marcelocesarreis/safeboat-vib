@@ -229,7 +229,8 @@ const PATTERNS = {
   'engatado-max': 'Engatado máximo',
 }
 const REC_N = 12                 // ciclos por padrão (~18 s de dados)
-let rec = { active: false, pattern: null, engine: '', got: 0, cycles: [] , startedAt: 0 }
+const SIDES = { be: 'BE · boreste', bb: 'BB · bombordo' }
+let rec = { active: false, pattern: null, side: 'be', engine: '', got: 0, cycles: [], startedAt: 0 }
 
 function slugify (s) {
   return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -241,18 +242,19 @@ function stamp () {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
 }
 function recStatus () {
-  return { rec: { active: rec.active, pattern: rec.pattern, got: rec.got, target: REC_N, engine: rec.engine } }
+  return { rec: { active: rec.active, pattern: rec.pattern, side: rec.side, got: rec.got, target: REC_N, engine: rec.engine } }
 }
 function saveRec () {
   const dir = path.join(REC_DIR, slugify(rec.engine))
   fs.mkdirSync(dir, { recursive: true })
-  const file = path.join(dir, `${rec.pattern}_${stamp()}.json`)
+  const file = path.join(dir, `${rec.side}-${rec.pattern}_${stamp()}.json`)
   fs.writeFileSync(file, JSON.stringify({
-    engine: rec.engine, pattern: rec.pattern, label: PATTERNS[rec.pattern],
+    engine: rec.engine, pattern: rec.pattern, side: rec.side, sideLabel: SIDES[rec.side],
+    label: PATTERNS[rec.pattern],
     startedAt: rec.startedAt, savedAt: Date.now(), n: rec.cycles.length, cycles: rec.cycles,
   }))
   console.log(`padrão salvo: ${file} (${rec.cycles.length} ciclos)`)
-  broadcast({ recDone: { pattern: rec.pattern, file: path.basename(file), n: rec.cycles.length } })
+  broadcast({ recDone: { pattern: rec.pattern, side: rec.side, file: path.basename(file), n: rec.cycles.length } })
 }
 function recFeed (raw, processed) {
   if (!rec.active) return
@@ -270,17 +272,95 @@ function recFeed (raw, processed) {
 }
 function recList (engine) {
   const dir = path.join(REC_DIR, slugify(engine))
-  const out = {}
+  const out = { be: {}, bb: {} }
   if (fs.existsSync(dir)) {
     for (const f of fs.readdirSync(dir)) {
-      const m = f.match(/^(.+)_(\d{8}-\d{6})\.json$/)
-      if (!m || !PATTERNS[m[1]]) continue
-      if (!out[m[1]]) out[m[1]] = { count: 0, last: '' }
-      out[m[1]].count++
-      if (m[2] > out[m[1]].last) out[m[1]].last = m[2]
+      // novo: <lado>-<padrao>_<stamp>.json · legado (sem lado) conta como BE
+      let m = f.match(/^(be|bb)-(.+)_(\d{8}-\d{6})\.json$/)
+      let side, pat, st
+      if (m) { side = m[1]; pat = m[2]; st = m[3] }
+      else {
+        m = f.match(/^(.+)_(\d{8}-\d{6})\.json$/)
+        if (!m) continue
+        side = 'be'; pat = m[1]; st = m[2]
+      }
+      if (!PATTERNS[pat]) continue
+      if (!out[side][pat]) out[side][pat] = { count: 0, last: '' }
+      out[side][pat].count++
+      if (st > out[side][pat].last) out[side][pat].last = st
     }
   }
   return out
+}
+
+// -------------------- comparador BB × BE (diagnóstico por divergência) ----
+// Recarrega a gravação mais recente de cada bordo p/ o mesmo padrão,
+// reprocessa os ciclos brutos, tira o espectro mediano do conjunto e
+// compara bandas ancoradas no 1× DETECTADO de cada lado (as lentas dos
+// dois motores nunca são idênticas). Divergência ≥2× numa banda = pista.
+function loadSide (engine, pattern, side) {
+  const dir = path.join(REC_DIR, slugify(engine))
+  if (!fs.existsSync(dir)) return null
+  const files = fs.readdirSync(dir)
+    .filter(f => f.startsWith(`${side}-${pattern}_`) || (side === 'be' && f.startsWith(`${pattern}_`)))
+    .sort()
+  if (!files.length) return null
+  const d = JSON.parse(fs.readFileSync(path.join(dir, files[files.length - 1]), 'utf8'))
+  const specs = [], metas = []
+  for (const c of d.cycles) {
+    const p = processRaw(c.raw)
+    specs.push(p.fft); metas.push(p)
+  }
+  // mediana do conjunto, bin a bin (fft já é mediana-Welch dentro do ciclo)
+  const nb = specs[0].length
+  const spec = new Array(nb)
+  const col = new Array(specs.length)
+  for (let i = 0; i < nb; i++) {
+    for (let k = 0; k < specs.length; k++) col[k] = specs[k][i]
+    spec[i] = +median(col).toFixed(2)
+  }
+  const avg = k => +(metas.reduce((a, m) => a + m[k], 0) / metas.length).toFixed(3)
+  const f1s = metas.map(m => m.machine.f).sort((a, b) => a - b)
+  const fs0 = metas[0].fs
+  return {
+    file: files[files.length - 1], n: d.cycles.length, savedAt: d.savedAt,
+    fs: fs0, spec, viso: avg('viso'), quality: avg('quality'),
+    f1: +median(f1s).toFixed(1), rpm: Math.round(median(f1s) * 60),
+    amp1x: +(metas.reduce((a, m) => a + m.machine.amp, 0) / metas.length).toFixed(1),
+  }
+}
+function bandEnergy (spec, fs, f0, f1) {
+  const dfr = fs / 512                       // espectro: janelas de 512 → 256 bins
+  let e = 0
+  for (let i = Math.max(1, Math.floor(f0 / dfr)); i <= Math.min(spec.length - 1, Math.ceil(f1 / dfr)); i++) e += spec[i] * spec[i]
+  return Math.sqrt(e)
+}
+function compare (engine, pattern) {
+  const be = loadSide(engine, pattern, 'be')
+  const bb = loadSide(engine, pattern, 'bb')
+  if (!be || !bb) return { error: 'faltam gravações: precisa do mesmo padrão nos DOIS bordos', have: { be: !!be, bb: !!bb } }
+  const bands = side => ({
+    b1x: bandEnergy(side.spec, side.fs, side.f1 * 0.8, side.f1 * 1.25),
+    b2x: bandEnergy(side.spec, side.fs, side.f1 * 1.7, side.f1 * 2.35),
+    harm: bandEnergy(side.spec, side.fs, side.f1 * 2.6, side.f1 * 6.4),
+    hf: bandEnergy(side.spec, side.fs, 200, 800),
+  })
+  const eBE = bands(be), eBB = bands(bb)
+  const ratio = (a, b) => +(Math.max(a, 0.01) / Math.max(b, 0.01)).toFixed(2)
+  const worse = bb.viso > be.viso ? 'BB (bombordo)' : 'BE (boreste)'
+  const w = bb.viso > be.viso ? eBB : eBE, g = bb.viso > be.viso ? eBE : eBB
+  const hints = []
+  if (ratio(w.b1x, g.b1x) >= 2) hints.push(`1× ${ratio(w.b1x, g.b1x)}× maior no ${worse} — desbalanceamento do conjunto girante ou coxim degradado`)
+  if (ratio(w.b2x, g.b2x) >= 2) hints.push(`2× ${ratio(w.b2x, g.b2x)}× maior no ${worse} — desalinhamento motor–eixo/flange`)
+  if (ratio(w.harm, g.harm) >= 2) hints.push(`harmônicos 3–6× ${ratio(w.harm, g.harm)}× maiores no ${worse} — folga mecânica/estrutural (coxins, parafusos de base)`)
+  if (ratio(w.hf, g.hf) >= 2) hints.push(`alta frequência (200–800 Hz) ${ratio(w.hf, g.hf)}× maior no ${worse} — rolamento/engrenagem (reversora) ou injetor`)
+  if (Math.abs(be.rpm - bb.rpm) > 60) hints.push(`lentas diferentes: BE ${be.rpm} × BB ${bb.rpm} rpm — regular a marcha lenta antes de concluir`)
+  if (!hints.length) hints.push(`divergência pequena (viso BE ${be.viso} × BB ${bb.viso} mm/s) — repetir gravações p/ confirmar`)
+  return {
+    pattern, label: PATTERNS[pattern], be, bb,
+    delta: { visoRatio: ratio(Math.max(be.viso, bb.viso), Math.min(be.viso, bb.viso)), worse, bandsBE: eBE, bandsBB: eBB },
+    hints,
+  }
 }
 
 // ---------------------------------------------------------- ponte serial
@@ -386,10 +466,11 @@ http.createServer((req, res) => {
     req.on('data', d => body += d)
     req.on('end', () => {
       try {
-        const { pattern, engine } = JSON.parse(body)
+        const { pattern, engine, side } = JSON.parse(body)
         if (!PATTERNS[pattern]) throw new Error('padrão inválido')
+        if (!SIDES[side || 'be']) throw new Error('bordo inválido')
         if (!engine || !engine.trim()) throw new Error('informe o modelo do motor')
-        rec = { active: true, pattern, engine: engine.trim(), got: 0, cycles: [], startedAt: Date.now() }
+        rec = { active: true, pattern, side: side || 'be', engine: engine.trim(), got: 0, cycles: [], startedAt: Date.now() }
         broadcast(recStatus())
         res.writeHead(200, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify(recStatus()))
@@ -409,7 +490,15 @@ http.createServer((req, res) => {
   if (url === '/rec/list') {
     const q = new URLSearchParams(req.url.split('?')[1] || '')
     res.writeHead(200, { 'Content-Type': 'application/json' })
-    return res.end(JSON.stringify({ patterns: PATTERNS, recorded: recList(q.get('engine') || ''), target: REC_N }))
+    return res.end(JSON.stringify({ patterns: PATTERNS, sides: SIDES, recorded: recList(q.get('engine') || ''), target: REC_N }))
+  }
+  if (url === '/rec/compare') {
+    const q = new URLSearchParams(req.url.split('?')[1] || '')
+    let out
+    try { out = compare(q.get('engine') || '', q.get('pattern') || '') }
+    catch (e) { out = { error: e.message } }
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    return res.end(JSON.stringify(out))
   }
   if (url === '/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
